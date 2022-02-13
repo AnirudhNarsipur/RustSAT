@@ -2,10 +2,15 @@
 
 @enum AbstractAssignment::Int8 Satisfied Conflict Undecided
 @enum LiteralState::Int8 Positive Negative Unset
-
+abstract type Option end
+struct Some{T} <: Option
+    value :: T
+end
+struct None <: Option end
+struct Bad <: Option end
 abstract type Satisfiability end
 struct SAT{T} <: Satisfiability
-    assigment :: Dict{T,Bool}
+    assignment :: Dict{T,LiteralState}
 end
 struct UNSAT <: Satisfiability end
 # Constant for debugging
@@ -21,13 +26,13 @@ mutable struct VarClause{T}
     negLiteral::Vector{T}
 end
 mutable struct SATInstance{T,K}
-    vartp :: Type
-    clausetp :: Type
+    usignedtp :: Type
+    signedtp :: Type
     numVars::T
     numClauses::T
     varAssignment::Dict{T,LiteralState}
     clauses::Vector{Clause{K}}
-    varToClause::Dict{T,VarClause{T}}
+    decisionStack :: Vector{Vector{T}}
 end
 
 
@@ -36,9 +41,10 @@ function initializeInstance(vars :: Number, clauses :: Number)
     clausevec = Vector{Clause{sattp.second}}(undef, clauses)
     SATType = SATInstance{sattp...}
     assigs = map(x -> (abs(x),Unset),1:vars)
-    SATType(sattp.first,sattp.second,vars, clauses, Dict(assigs), clausevec, Dict())
+    SATType(sattp.first,sattp.second,vars, clauses, Dict(assigs), clausevec,[])
 end
-function getClause(literals :: Vector, tp :: Type)
+function getClause(literals , tp :: Type)
+    @assert !(0 in literals)
     ltrslen = length(literals)
     if ltrslen == 0
         return nothing
@@ -73,8 +79,8 @@ function addToVarClause(instance::SATInstance, watchers, index)
             (abwatch == watcher) ? push!(instance.varToClause[abwatch].posLiteral, index) :
             push!(instance.varToClause[abwatch].negLiteral, index)
         else
-            (abwatch == watcher) ? instance.varToClause[abwatch] = VarClause([convert(instance.vartp,index)],Vector{instance.vartp}()) :
-            instance.varToClause[abwatch] = VarClause(Vector{instance.vartp}(),[convert(instance.vartp,index)])
+            (abwatch == watcher) ? instance.varToClause[abwatch] = VarClause([convert(instance.usignedtp,index)],Vector{instance.usignedtp}()) :
+            instance.varToClause[abwatch] = VarClause(Vector{instance.usignedtp}(),[convert(instance.usignedtp,index)])
         end
     end
 end

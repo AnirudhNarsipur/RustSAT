@@ -2,7 +2,7 @@ using Test
 include("./solver.jl")
 @testset "read_cnf_test" begin
     read_cnf("small_inst/toy_solveable.cnf")
-    read_cnf("large_inst/C168_128.cnf")
+    read_cnf("input/C168_128.cnf")
     @test true
 end
 @testset "check Assignment" begin
@@ -24,27 +24,57 @@ end
 @testset "checkWatcher" begin
     assigs1 = Dict([(1,Unset)])
     cls1 = getClause([1],Int8)
-    @test checkWatchers(assigs1,cls1) == 1
+    @test checkWatchers(assigs1,cls1) == Some{Int8}(1)
     assigs = Dict([(1,Unset),(2,Negative),(3,Positive),(4,Positive),(5,Unset),(6,Unset)])
     cls = getClause([1,-2],Int8)
-    @test checkWatchers(assigs,cls) == Satisfied
+    @test checkWatchers(assigs,cls) isa None
     cls2 = getClause([1,2,4],Int8)
     @test cls2.watchers == [1,2]
-    @test checkWatchers(assigs,cls2) == Satisfied
+    @test checkWatchers(assigs,cls2) isa None
     @test issubset(Set(Int8[3]),Set(cls2.watchers))   #indices
     cls3 = getClause([2,-3,4],Int8)
-    @test checkWatchers(assigs,cls3) == Satisfied
+    @test checkWatchers(assigs,cls3) isa None
     @test issubset(Set(Int8[3]),Set(cls3.watchers))
     cls4 = getClause([2,-3,-4],Int8)
-    @test checkWatchers(assigs,cls4) == Conflict
+    @test checkWatchers(assigs,cls4) isa Bad
     cls5 = getClause([2,-3,5],Int8)
-    @test checkWatchers(assigs,cls5) == 5
+    @test checkWatchers(assigs,cls5) == Some{Int8}(5)
     cls6 = getClause([2,-3,-5],Int8)
-    @test checkWatchers(assigs,cls6) == -5
+    @test checkWatchers(assigs,cls6) == Some{Int8}(-5)
     cls7 = getClause([2,-3,-5,6],Int8)
-    @test checkWatchers(assigs,cls7) == Satisfied
+    @test checkWatchers(assigs,cls7) isa None
+    cls8 = getClause([1,5,6],Int8)
+    @test checkWatchers(assigs,cls8) isa None
+    @test issubset(Set(Int8[1,2]),Set(cls8.watchers))
+end
+@testset "propUnitLiterals" begin
+    inst =  read_cnf("test_inst/test0.cnf")
+    propUnitLiterals(inst)
+    @test true
+    inst = read_cnf("test_inst/test1.cnf")
+    propUnitLiterals(inst)
+    @test inst.varAssignment[1] == Unset && inst.varAssignment[2] == Unset && inst.varAssignment[3] == Unset
+    inst = read_cnf("test_inst/test2.cnf")
+    propUnitLiterals(inst)
+    @test inst.varAssignment == Dict([(1,Positive),(2,Unset),(3,Negative),(4,Positive)])
+    inst = read_cnf("test_inst/test3.cnf")
+    res = propUnitLiterals(inst)
+    @test res == Bad()
+
 end
 
+@testset "setAssignment" begin
+    inst = initializeInstance(6,4)
+    inst.varAssignment = Dict([(1,Unset),(2,Negative),(3,Positive),(4,Positive),(5,Unset),(6,Unset)])
+    assigs = inst.varAssignment
+    @test setAssignment(inst,-1) isa None
+    @test assigs[1] == Negative
+    @test setAssignment(inst,2) isa Bad
+    @test setAssignment(inst,3) isa None
+    @test setAssignment(inst,5) isa None
+    @test assigs[5] == Positive
+    
+end
 # assigs = Dict([(1,Unset),(2,Negative),(3,Positive),(4,Positive)])
 # cls3 = getClause([2,-3,4],Int8)
 # checkWatchers(assigs,cls3) == 4

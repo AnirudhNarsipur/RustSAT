@@ -26,7 +26,6 @@ function read_cnf(fl::String)
                 end
             end
             #Remove redundancy here
-            sattp = getnumtype(numClauses,numVars)
             satinstance = initializeInstance(numVars, numClauses)
             # if debug
             #     println("SAT Instance is ", satinstance)
@@ -39,14 +38,14 @@ function read_cnf(fl::String)
                     continue
                 end
                 # println("split :", split(clause))
-                literals = map(x -> parse(sattp.second, x), split(rawclause))
+                literals = map(x -> parse(satinstance.signedtp, x), split(rawclause))
                 # println(nums)
                 # @assert last(literals) == 0
-                clause = getClause(literals, sattp.second)
+                tmp = @view literals[1:end-1]
+                clause = getClause(tmp , satinstance.signedtp)
                 if clause==nothing
-                    giveOutput(UNSAT)
+                    giveOutput(fl,0,UNSAT)
                 end
-                addToVarClause(satinstance, clause.watchers,index)
                 satinstance.clauses[index] = clause
             end
             # showstruct(satinstance)
@@ -57,18 +56,49 @@ function read_cnf(fl::String)
         error("Could not read CNF file")
     end
 end
-
-function giveOutput(fl :: String,time ,result)
-   kv_json = (k,v) -> join(['"',k,""" ": """,'"',v,'"'])
-   out = join([
-       "{",
-       kv_json("Instance",fl),",",
-       kv_json("Time",time),",",
-       kv_json("Result","UNSAT") ,
-       "}"
-   ])
-   print(out)
+function assigStrRep(assig :: Dict)
+    strres = Vector{String}(undef,length(assig))
+    for v in assig
+        if v[2] == Positive
+            strres[v[1]] = join([string(v[1])," true "])
+        elseif v[2] == Negative
+            strres[v[1]] = join([string(v[1])," false "])
+        elseif v[2] == Unset
+            strres[v[1]] = join([string(v[1])," true "])
+        else
+            error("cant even")
+        end
+    end
+    return strres
 end
+
+function giveOutput(fl :: String,time ,result :: Satisfiability)
+   kv_json = (k,v) -> join(['"',k,"""": """,'"',v,'"'])
+   if result isa UNSAT
+    out = join([
+        "{",
+        kv_json("Instance",fl),",",
+        kv_json("Time",time),",",
+        kv_json("Result","UNSAT") ,
+        "}"
+    ])
+   print(out)
+   return nothing
+   else
+    strrep = strip(join(assigStrRep(result.assignment)))
+    out = join([
+        "{",
+        kv_json("Instance",fl),",",
+        kv_json("Time",time),",",
+        kv_json("Result","SAT") ,
+        kv_json("Solution",strrep),
+        "}"
+    ],"")
+    print(out)
+    return nothing
+   end
+end
+
 
     
 
