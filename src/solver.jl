@@ -3,7 +3,7 @@ include("./dimacparser.jl")
 # returns literal if it exists
 #guarenteed not to have empty clauses
 const ok2 = [Satisfied, Satisfied]
-function literalInState(ls :: Vector{AbstractAssignment}, st::AbstractAssignment)
+function literalInState(ls::Vector{AbstractAssignment}, st::AbstractAssignment)
     any(map(x -> x == st, ls))
 end
 
@@ -12,26 +12,31 @@ function checkAssignment(assigments::Dict, literal::Number)
     if (literal < 0 && as == Negative) || (literal > 0 && as == Positive)
         return Satisfied
     elseif as == Unset
-       return Undecided
+        return Undecided
     else
-       return Conflict
+        return Conflict
     end
 end
-function updateStack(inst :: SATInstance,literal :: Number)
+function updateStack(inst::SATInstance, literal::Number)
     if isempty(inst.decisionStack)
-        push!(inst.decisionStack,[])
+        push!(inst.decisionStack, [])
     end
-    push!(inst.decisionStack[end],abs(literal))
+    # println("pushing ",literal," at level ",length(inst.decisionStack))
+    inst.varAssignment[abs(literal)] = (literal > 0) ? Positive : Negative
+    push!(inst.decisionStack[end], abs(literal))
+    return nothing
 end
-function newStackCall(inst :: SATInstance)
-    push!(inst.decisionStack,[])
+function newStackCall(inst::SATInstance)
+    push!(inst.decisionStack, [])
 end
-function unwindStack(inst :: SATInstance)
+function unwindStack(inst::SATInstance)
+    ln = length(inst.decisionStack)
     last = pop!(inst.decisionStack)
     for i in last
+        # println("removing ",i, " at level ",ln)
         inst.varAssignment[i] = Unset
     end
-    return nothing  
+    return nothing
 end
 
 function setAssignment(inst::SATInstance, literal::Number)
@@ -41,8 +46,7 @@ function setAssignment(inst::SATInstance, literal::Number)
     elseif curr == Conflict
         Bad()
     elseif curr == Undecided
-        inst.varAssignment[abs(literal)] = (literal > 0) ? Positive : Negative
-        updateStack(inst,literal)
+        updateStack(inst, literal)
         return None()
     else
         error("should not be reached")
@@ -50,10 +54,10 @@ function setAssignment(inst::SATInstance, literal::Number)
 end
 # Returns Option
 function checkWatchers(assigs::Dict, cls::Clause)
-    if length(cls.watchers) == 0 
-        as = checkAssignment(assigs,cls.literals[1])
+    if length(cls.watchers) == 0
+        as = checkAssignment(assigs, cls.literals[1])
         if as == Satisfied
-           return None()
+            return None()
         elseif as == Conflict
             return Bad()
         elseif as == Undecided
@@ -101,11 +105,11 @@ end
 
 function assignLiteral(inst::SATInstance, literals::Number)
     for lit in literals
-        res = setAssignment(inst,lit)
+        res = setAssignment(inst, lit)
         if res isa Bad
             return Bad
         end
-    end 
+    end
     return None
 end
 
@@ -120,8 +124,8 @@ function propUnitLiterals(inst::SATInstance)
             elseif res isa Bad
                 return Bad()
             elseif res isa Some
-                assignLiteral(inst,res.value)
-                cont=true
+                assignLiteral(inst, res.value)
+                cont = true
                 continue
             else
                 error(join("should not be reached res was : ", res))
@@ -138,11 +142,11 @@ function verify_inst(inst::SATInstance)
     end
 end
 #Dumb Just assings everything to Positive
-function pickVar(inst :: SATInstance)
+function pickVar(inst::SATInstance)
     for clause in inst.clauses
         for literal in clause.literals
-            if checkAssignment(inst.varAssignment,literal) == Undecided
-                return literal
+            if checkAssignment(inst.varAssignment, literal) == Undecided
+                return (abs(literal), (literal>0) ? Positive : Negative)
             end
         end
     end
@@ -163,7 +167,7 @@ function _dpll(inst::SATInstance)
             else
                 # newStackCall(inst)
                 assig = deepcopy(inst.varAssignment)
-                setAssignment(inst,varToBranch)
+                setAssignment(inst, varToBranch)
                 res = dpll()
                 if res isa None
                     return None()
@@ -171,7 +175,7 @@ function _dpll(inst::SATInstance)
                     # unwindStack(inst)
                     # newStackCall(inst)
                     inst.varAssignment = assig
-                    setAssignment(inst,-varToBranch)
+                    setAssignment(inst, -varToBranch)
                     res = dpll()
                     if res isa None
                         return None()
@@ -184,12 +188,33 @@ function _dpll(inst::SATInstance)
     end
     return dpll()
 end
+function compDict(d1, d2, l)
+    k1 = Set(keys(d1))
+    k2 = Set(keys(d2))
+    @assert k1 == k2
+    for key in k1
+        if d1[key] == d2[key]
+            continue
+        else
+            error("For ", key, " ", d1[key], " is not ", d2[key], " at level ", l)
+        end
+    end
+end
+function opposite(x)
+    if x == Positive
+        Negative
+    elseif x == Negative
+        Positive
+    else
+        error("bad")
+    end
+end
 
 function p_dpll(inst::SATInstance)
     verify_inst(inst)
     function dpll(i)
         #BCP
-        println("dpll level ",i)
+        # println("dpll level ",i)
         newStackCall(inst)
         @assert(length(inst.decisionStack) == i)
         res = propUnitLiterals(inst)
@@ -198,28 +223,26 @@ function p_dpll(inst::SATInstance)
             return res
         else
             @assert(length(inst.decisionStack) == i)
-            varToBranch = pickVar(inst)
-            if varToBranch == Satisfied
-                unwindStack(inst)
+            VTB = pickVar(inst)
+            if VTB == Satisfied
                 return None()
             else
                 @assert(length(inst.decisionStack) == i)
-                setAssignment(inst,varToBranch)
-                res = dpll(i+1)
+                assig = deepcopy(inst.varAssignment)
+                inst.varAssignment[VTB[1]] = VTB[2]
+                res = dpll(i + 1)
                 if res isa None
-                    unwindStack(inst)
-                    return None()
+                    return res
                 else
-                    setAssignment(inst,-varToBranch)
                     @assert(length(inst.decisionStack) == i)
-                    res = dpll(i+1)
-                    if res isa None
+                    inst.varAssignment[VTB[1]] = opposite(VTB[2])
+                    # compDict(inst.varAssignment,assig,i)
+                    res = dpll(i + 1)
+                    if res isa Bad
+                        inst.varAssignment[VTB[1]] = Unset
                         unwindStack(inst)
-                        return None()
-                    else
-                        unwindStack(inst)
-                        return Bad()
                     end
+                    return res
                 end
             end
         end
@@ -229,14 +252,16 @@ end
 
 function calc_inst(fl::String)
     inst = read_cnf(fl)
-    res = _dpll(inst)
+    res = p_dpll(inst)
     if res isa None
-        giveOutput(fl,1,SAT(inst.varAssignment))
+        giveOutput(fl, 1, SAT(inst.varAssignment))
     elseif res isa Bad
         giveOutput(fl, 1.23, UNSAT())
     else
-        error("why oh why",res)
+        error("why oh why", res)
     end
 end
-@time calc_inst("small_inst/toy_solveable.cnf")
+# @time calc_inst("small_inst/toy_solveable.cnf")
 # @time calc_inst("input/C140.cnf")
+# @time calc_inst("test_inst/test3.cnf")
+
