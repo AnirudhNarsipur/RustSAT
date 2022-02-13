@@ -13,9 +13,13 @@ struct SAT{T} <: Satisfiability
     assignment::Dict{T,LiteralState}
 end
 struct UNSAT <: Satisfiability end
-# Constant for debugging
+mutable struct DynamicVec{T}
+    top::UInt64
+    vec::Vector{T}
+end
 # Holds a the literals of a clause and it's watchers (2 watchers)
 #watchers holds indices not literals
+
 struct Clause{T}
     literals::Vector{T}
     watchers::Vector{T}
@@ -30,13 +34,10 @@ struct SATInstance{T,K}
     clauses::Vector{Clause{K}}
     decisionStack::Vector{Vector{T}}
 end
-mutable struct DynamicVec{T}
-    top::UInt64
-    vec::Vector{T}
-end
-function initializeDynamicVec(tp :: Type)
-    DynamicVec{tp}(0,Vector{tp}(undef,1))
-    
+const ok2 = [Satisfied, Satisfied]
+function initializeDynamicVec(tp::Type)
+    DynamicVec{tp}(0, Vector{tp}(undef, 1))
+
 end
 function pushElem(dvec::DynamicVec{T}, elem::T) where {T}
     ln = length(dvec.vec)

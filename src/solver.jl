@@ -2,12 +2,12 @@ include("./dimacparser.jl")
 #Checks the watchers of the clause and 
 # returns literal if it exists
 #guarenteed not to have empty clauses
-const ok2 = [Satisfied, Satisfied]
+
 function literalInState(ls::Vector{AbstractAssignment}, st::AbstractAssignment)
     any(map(x -> x == st, ls))
 end
 
-function checkAssignment(assigments::Dict, literal::Number)
+function checkAssignment(assigments:: Dict{T,LiteralState}, literal::Number) where T <: Number
     as = assigments[abs(literal)]
     if (literal < 0 && as == Negative) || (literal > 0 && as == Positive)
         return Satisfied
@@ -52,7 +52,7 @@ function setAssignment(inst::SATInstance, literal::Number)
     end
 end
 # Returns Option
-function checkWatchers(assigs::Dict, cls::Clause)
+function checkWatchers(assigs:: Dict{T,LiteralState}, cls::Clause{K}) where {T,K} 
     if length(cls.watchers) == 0
         as = checkAssignment(assigs, cls.literals[1])
         if as == Satisfied
@@ -163,7 +163,7 @@ function compDict(d1, d2, l)
         end
     end
 end
-function opposite(x)
+function opposite(x :: LiteralState)
     if x == Positive
         Negative
     elseif x == Negative
