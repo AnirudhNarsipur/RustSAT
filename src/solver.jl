@@ -27,10 +27,10 @@ function newStackCall(inst :: SATInstance)
     push!(inst.decisionStack,[])
 end
 function unwindStack(inst :: SATInstance)
-    for i in inst.decisionStack[end]
+    last = pop!(inst.decisionStack)
+    for i in last
         inst.varAssignment[i] = Unset
     end
-    pop!(inst.decisionStack)
     return nothing  
 end
 
@@ -152,7 +152,7 @@ function _dpll(inst::SATInstance)
     verify_inst(inst)
     function dpll()
         #BCP
-        println("starting dpll")
+        # println("starting dpll")
         res = propUnitLiterals(inst)
         if res isa Bad
             return res
@@ -161,14 +161,16 @@ function _dpll(inst::SATInstance)
             if varToBranch == Satisfied
                 return None()
             else
-                newStackCall(inst)
+                # newStackCall(inst)
+                assig = deepcopy(inst.varAssignment)
                 setAssignment(inst,varToBranch)
                 res = dpll()
                 if res isa None
                     return None()
                 else
-                    unwindStack(inst)
-                    newStackCall(inst)
+                    # unwindStack(inst)
+                    # newStackCall(inst)
+                    inst.varAssignment = assig
                     setAssignment(inst,-varToBranch)
                     res = dpll()
                     if res isa None
@@ -183,6 +185,48 @@ function _dpll(inst::SATInstance)
     return dpll()
 end
 
+function p_dpll(inst::SATInstance)
+    verify_inst(inst)
+    function dpll(i)
+        #BCP
+        println("dpll level ",i)
+        newStackCall(inst)
+        @assert(length(inst.decisionStack) == i)
+        res = propUnitLiterals(inst)
+        if res isa Bad
+            unwindStack(inst)
+            return res
+        else
+            @assert(length(inst.decisionStack) == i)
+            varToBranch = pickVar(inst)
+            if varToBranch == Satisfied
+                unwindStack(inst)
+                return None()
+            else
+                @assert(length(inst.decisionStack) == i)
+                setAssignment(inst,varToBranch)
+                res = dpll(i+1)
+                if res isa None
+                    unwindStack(inst)
+                    return None()
+                else
+                    setAssignment(inst,-varToBranch)
+                    @assert(length(inst.decisionStack) == i)
+                    res = dpll(i+1)
+                    if res isa None
+                        unwindStack(inst)
+                        return None()
+                    else
+                        unwindStack(inst)
+                        return Bad()
+                    end
+                end
+            end
+        end
+    end
+    return dpll(1)
+end
+
 function calc_inst(fl::String)
     inst = read_cnf(fl)
     res = _dpll(inst)
@@ -194,4 +238,5 @@ function calc_inst(fl::String)
         error("why oh why",res)
     end
 end
-calc_inst("test_inst/test5.cnf")
+@time calc_inst("small_inst/toy_solveable.cnf")
+# @time calc_inst("input/C140.cnf")

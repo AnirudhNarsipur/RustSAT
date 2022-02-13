@@ -33,16 +33,17 @@ function read_cnf(fl::String)
             #     println("sattp is ", sattp)
             # end
             resize!(satinstance.clauses,numClauses)
+            literals = Vector{satinstance.signedtp}(undef,numVars)
             for (index, rawclause) in enumerate(itr)
                 if rawclause == ""
                     continue
                 end
                 # println("split :", split(clause))
-                literals = map(x -> parse(satinstance.signedtp, x), split(rawclause))
+                tmp = split(rawclause)
+                map!(x -> parse(satinstance.signedtp, x),literals, tmp)
                 # println(nums)
                 # @assert last(literals) == 0
-                tmp = @view literals[1:end-1]
-                clause = getClause(tmp , satinstance.signedtp)
+                clause = getClause(literals[1:length(tmp)-1] , satinstance.signedtp)
                 if clause==nothing
                     giveOutput(fl,0,UNSAT)
                 end
