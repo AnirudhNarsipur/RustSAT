@@ -32,7 +32,7 @@ struct SATInstance{T,K}
     numClauses::T
     varAssignment::Dict{T,LiteralState}
     clauses::Vector{Clause{K}}
-    decisionStack::Vector{Vector{T}}
+    decisionStack::DynamicVec{DynamicVec{T}}
 end
 const ok2 = [Satisfied, Satisfied]
 function initializeDynamicVec(tp::Type)
@@ -43,7 +43,7 @@ function pushElem(dvec::DynamicVec{T}, elem::T) where {T}
     ln = length(dvec.vec)
     if dvec.top == ln
         resize!(dvec.vec, ln * 2)
-    end
+    end 
     dvec.vec[dvec.top+1] = elem
     dvec.top += 1
 end
@@ -56,13 +56,33 @@ function popElem(dvec::DynamicVec{T}) where {T}
         return Some(tmp)
     end
 end
+function pop2DElem(dvec :: DynamicVec{DynamicVec{T}}) where {T}
+    if dvec.top == 0
+        return Bad()
+    else
+        tmp = dvec.vec[dvec.top]
+        dvec.top -= 1
+        if tmp.top == 0
+           return Bad()
+        else
+            return Some(tmp.vec[1:tmp.top])
+        end         
+    end 
+end
+function push2DElem(dvec :: DynamicVec{DynamicVec{T}},elem :: T) where {T}
+    if dvec.top == 0
+        pushElem(dvec,initializeDynamicVec(T))
+    end
+    pushElem(dvec.vec[dvec.top],elem)
+    return nothing
+end
 
 function initializeInstance(vars::Number, clauses::Number)
     sattp = getnumtype(clauses, vars)
     clausevec = Vector{Clause{sattp.second}}(undef, clauses)
     SATType = SATInstance{sattp...}
     assigs = map(x -> (abs(x), Unset), 1:vars)
-    SATType(sattp.first, sattp.second, vars, clauses, Dict(assigs), clausevec, [])
+    SATType(sattp.first, sattp.second, vars, clauses, Dict(assigs), clausevec,initializeDynamicVec(DynamicVec{sattp.first}))
 end
 function getClause(literals, tp::Type)
     @assert !(0 in literals)

@@ -7,7 +7,7 @@ function literalInState(ls::Vector{AbstractAssignment}, st::AbstractAssignment)
     any(map(x -> x == st, ls))
 end
 
-function checkAssignment(assigments:: Dict{T,LiteralState}, literal::Number) where T <: Number
+function checkAssignment(assigments::Dict{T,LiteralState}, literal::Number) where {T<:Number}
     as = assigments[abs(literal)]
     if (literal < 0 && as == Negative) || (literal > 0 && as == Positive)
         return Satisfied
@@ -18,24 +18,30 @@ function checkAssignment(assigments:: Dict{T,LiteralState}, literal::Number) whe
     end
 end
 function updateStack(inst::SATInstance, literal::Number)
-    if isempty(inst.decisionStack)
-        push!(inst.decisionStack, [])
-    end
     # println("pushing ",literal," at level ",length(inst.decisionStack))
+    @assert 1 <= convert(inst.usignedtp, abs(literal))  <= inst.numVars
     inst.varAssignment[abs(literal)] = (literal > 0) ? Positive : Negative
-    push!(inst.decisionStack[end], abs(literal))
+    push2DElem(inst.decisionStack, convert(inst.usignedtp, abs(literal)) )
     return nothing
 end
 function newStackCall(inst::SATInstance)
-    push!(inst.decisionStack, [])
+    pushElem(inst.decisionStack, initializeDynamicVec(inst.usignedtp))
 end
 function unwindStack(inst::SATInstance)
-    last = pop!(inst.decisionStack)
-    for i in last
-        # println("removing ",i, " at level ",ln)
-        inst.varAssignment[i] = Unset
+    last = pop2DElem(inst.decisionStack)
+    if last isa Bad
+        return nothing
+    elseif last isa Some
+        # println("last is  ",last.value.vec)
+        for i in last.value
+            # println("i is ",i)
+            # @assert 1 <= i <= inst.numVars
+            inst.varAssignment[i] = Unset
+        end
+        return nothing
+    else
+        error("unreachable!")
     end
-    return nothing
 end
 
 function setAssignment(inst::SATInstance, literal::Number)
@@ -52,7 +58,7 @@ function setAssignment(inst::SATInstance, literal::Number)
     end
 end
 # Returns Option
-function checkWatchers(assigs:: Dict{T,LiteralState}, cls::Clause{K}) where {T,K} 
+function checkWatchers(assigs::Dict{T,LiteralState}, cls::Clause{K}) where {T,K}
     if length(cls.watchers) == 0
         as = checkAssignment(assigs, cls.literals[1])
         if as == Satisfied
@@ -136,8 +142,12 @@ end
 
 
 function verify_inst(inst::SATInstance)
+    @assert length(keys(inst.varAssignment)) == inst.numVars
     for i = 1:inst.numVars
         @assert inst.varAssignment[i] == Unset
+    end
+    for key in keys(inst.varAssignment)
+        @assert 1 <= key <= inst.numVars
     end
 end
 #Dumb Just assings everything to Positive
@@ -145,11 +155,11 @@ function pickVar(inst::SATInstance)
     for clause in inst.clauses
         for literal in clause.literals
             if checkAssignment(inst.varAssignment, literal) == Undecided
-                return (abs(literal), (literal>0) ? Positive : Negative)
+                return Some((abs(literal), (literal > 0) ? Positive : Negative))
             end
         end
     end
-    return Satisfied
+    return None()
 end
 function compDict(d1, d2, l)
     k1 = Set(keys(d1))
@@ -163,7 +173,7 @@ function compDict(d1, d2, l)
         end
     end
 end
-function opposite(x :: LiteralState)
+function opposite(x::LiteralState)
     if x == Positive
         Negative
     elseif x == Negative
@@ -174,7 +184,7 @@ function opposite(x :: LiteralState)
 end
 
 function _dpll(inst::SATInstance)
-    # verify_inst(inst)
+    verify_inst(inst)
     function dpll()
         #BCP
         # println("dpll level ",i)
@@ -187,10 +197,13 @@ function _dpll(inst::SATInstance)
         else
             # @assert(length(inst.decisionStack) == i)
             VTB = pickVar(inst)
-            if VTB == Satisfied
+            if VTB isa None
                 return None()
             else
                 # @assert(length(inst.decisionStack) == i)
+                VTB = VTB.value
+                # println("VTB is ",VTB)
+                @assert 1 <= VTB[1] <= inst.numVars
                 inst.varAssignment[VTB[1]] = VTB[2]
                 res = dpll()
                 if res isa None
@@ -209,21 +222,26 @@ function _dpll(inst::SATInstance)
             end
         end
     end
+    # verify_inst(inst)
     return dpll()
 end
 
 function calc_inst(fl::String)
     inst = read_cnf(fl)
     res = _dpll(inst)
-    if res isa None
-        giveOutput(fl, 1, SAT(inst.varAssignment))
-    elseif res isa Bad
-        giveOutput(fl, 1.23, UNSAT())
-    else
-        error("why oh why", res)
-    end
+    # if res isa None
+    #     giveOutput(fl, 1, SAT(inst.varAssignment))
+    # elseif res isa Bad
+    #     giveOutput(fl, 1.23, UNSAT())
+    # else
+    #     error("why oh why", res)
+    # end
 end
 # @time calc_inst("small_inst/toy_solveable.cnf")
-# @time calc_inst("input/C140.cnf")
-# @time calc_inst("test_inst/test3.cnf")
+# @time calc_inst("small_inst/large.cnf")
 
+@time calc_inst("input/C140.cnf")
+# @time calc_inst("test_inst/test3.cnf")
+# inst = read_cnf("small_inst/toy_solveable.cnf")
+# _dpll(inst)
+# dc = keys(inst.varAssignment)
