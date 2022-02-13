@@ -4,46 +4,66 @@
 @enum LiteralState::Int8 Positive Negative Unset
 abstract type Option end
 struct Some{T} <: Option
-    value :: T
+    value::T
 end
 struct None <: Option end
 struct Bad <: Option end
 abstract type Satisfiability end
 struct SAT{T} <: Satisfiability
-    assignment :: Dict{T,LiteralState}
+    assignment::Dict{T,LiteralState}
 end
 struct UNSAT <: Satisfiability end
 # Constant for debugging
 # Holds a the literals of a clause and it's watchers (2 watchers)
 #watchers holds indices not literals
-mutable struct Clause{T}
+struct Clause{T}
     literals::Vector{T}
     watchers::Vector{T}
 end
 Base.:(==)(x::Clause, y::Clause) = x.literals == y.literals && x.watchers == y.watchers
-mutable struct VarClause{T}
-    posLiteral::Vector{T}
-    negLiteral::Vector{T}
-end
-mutable struct SATInstance{T,K}
-    usignedtp :: Type
-    signedtp :: Type
+struct SATInstance{T,K}
+    usignedtp::Type
+    signedtp::Type
     numVars::T
     numClauses::T
     varAssignment::Dict{T,LiteralState}
     clauses::Vector{Clause{K}}
-    decisionStack :: Vector{Vector{T}}
+    decisionStack::Vector{Vector{T}}
+end
+mutable struct DynamicVec{T}
+    top::UInt64
+    vec::Vector{T}
+end
+function initializeDynamicVec(tp :: Type)
+    DynamicVec{tp}(0,Vector{tp}(undef,1))
+    
+end
+function pushElem(dvec::DynamicVec{T}, elem::T) where {T}
+    ln = length(dvec.vec)
+    if dvec.top == ln
+        resize!(dvec.vec, ln * 2)
+    end
+    dvec.vec[dvec.top+1] = elem
+    dvec.top += 1
+end
+function popElem(dvec::DynamicVec{T}) where {T}
+    if dvec.top == 0
+        Bad()
+    else
+        tmp = dvec.vec[dvec.top]
+        dvec.top -= 1
+        return Some(tmp)
+    end
 end
 
-
-function initializeInstance(vars :: Number, clauses :: Number)
-    sattp = getnumtype(clauses,vars)
+function initializeInstance(vars::Number, clauses::Number)
+    sattp = getnumtype(clauses, vars)
     clausevec = Vector{Clause{sattp.second}}(undef, clauses)
     SATType = SATInstance{sattp...}
-    assigs = map(x -> (abs(x),Unset),1:vars)
-    SATType(sattp.first,sattp.second,vars, clauses, Dict(assigs), clausevec,[])
+    assigs = map(x -> (abs(x), Unset), 1:vars)
+    SATType(sattp.first, sattp.second, vars, clauses, Dict(assigs), clausevec, [])
 end
-function getClause(literals , tp :: Type)
+function getClause(literals, tp::Type)
     @assert !(0 in literals)
     ltrslen = length(literals)
     if ltrslen == 0
@@ -51,11 +71,11 @@ function getClause(literals , tp :: Type)
     elseif ltrslen == 1
         Clause{tp}(literals, [])
     else
-         Clause{tp}(literals, [1,2])
+        Clause{tp}(literals, [1, 2])
     end
 end
 # Given num of clauses and vars calculates approp num type
-function getnumtype(clauses :: Number,vars :: Number)
+function getnumtype(clauses::Number, vars::Number)
     choose = clauses > vars ? clauses : vars
     tps = [Int8, Int16, Int32, Int64, Int128]
     mapping = Dict(
@@ -71,16 +91,4 @@ function getnumtype(clauses :: Number,vars :: Number)
         end
     end
     error("Clause set is too large Overflow")
-end
-function addToVarClause(instance::SATInstance, watchers, index)
-    for watcher in watchers
-        abwatch = abs(watcher)
-        if haskey(instance.varToClause, abwatch)
-            (abwatch == watcher) ? push!(instance.varToClause[abwatch].posLiteral, index) :
-            push!(instance.varToClause[abwatch].negLiteral, index)
-        else
-            (abwatch == watcher) ? instance.varToClause[abwatch] = VarClause([convert(instance.usignedtp,index)],Vector{instance.usignedtp}()) :
-            instance.varToClause[abwatch] = VarClause(Vector{instance.usignedtp}(),[convert(instance.usignedtp,index)])
-        end
-    end
 end

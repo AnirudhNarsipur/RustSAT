@@ -1,5 +1,6 @@
 using Test
 include("./solver.jl")
+include("./pbt.jl")
 @testset "read_cnf_test" begin
     read_cnf("small_inst/toy_solveable.cnf")
     read_cnf("input/C168_128.cnf")
@@ -63,17 +64,50 @@ end
 
 end
 
-@testset "setAssignment" begin
-    inst = initializeInstance(6,4)
-    inst.varAssignment = Dict([(1,Unset),(2,Negative),(3,Positive),(4,Positive),(5,Unset),(6,Unset)])
-    assigs = inst.varAssignment
-    @test setAssignment(inst,-1) isa None
-    @test assigs[1] == Negative
-    @test setAssignment(inst,2) isa Bad
-    @test setAssignment(inst,3) isa None
-    @test setAssignment(inst,5) isa None
-    @test assigs[5] == Positive
-    
+# @testset "setAssignment" begin
+#     inst = initializeInstance(6,4)
+#     inst.varAssignment = Dict([(1,Unset),(2,Negative),(3,Positive),(4,Positive),(5,Unset),(6,Unset)])
+#     assigs = inst.varAssignment
+#     @test setAssignment(inst,-1) isa None
+#     @test assigs[1] == Negative
+#     @test setAssignment(inst,2) isa Bad
+#     @test setAssignment(inst,3) isa None
+#     @test setAssignment(inst,5) isa None
+#     @test assigs[5] == Positive
+# end
+@testset "SAT Itself" begin
+    # @test check_inst("input/C168_128.cnf")
+    @test check_inst("small_inst/toy_solveable.cnf")
+end
+
+@testset "DynamicVec" begin
+    st = initializeDynamicVec(Int64)
+    @test length(st.vec) == 1
+    @test st.top == 0
+    pushElem(st,1)
+    @test st.top == 1
+    @test st.vec == [1]
+    pushElem(st,3)
+    @test st.top == 2
+    @test length(st.vec) == 2
+    @test st.vec[1:2] == [1,3]
+    pushElem(st,5)
+    @test st.top == 3
+    @test length(st.vec) == 4
+    @test st.vec[1:3] == [1,3,5]
+    p1 = popElem(st)
+    @test p1  == Some(5)
+    @test st.top == 2
+    @test length(st.vec) == 4
+    @test st.vec[1:3] == [1,3,5]
+    pushElem(st,7)
+    @test st.vec[1:3] == [1,3,7]
+    st2 = initializeDynamicVec(Int64)
+    @test popElem(st2) isa Bad
+    pushElem(st2,1)
+    @test popElem(st2) == Some(1)
+    @test popElem(st2) isa Bad
+
 end
 # assigs = Dict([(1,Unset),(2,Negative),(3,Positive),(4,Positive)])
 # cls3 = getClause([2,-3,4],Int8)

@@ -30,7 +30,6 @@ function newStackCall(inst::SATInstance)
     push!(inst.decisionStack, [])
 end
 function unwindStack(inst::SATInstance)
-    ln = length(inst.decisionStack)
     last = pop!(inst.decisionStack)
     for i in last
         # println("removing ",i, " at level ",ln)
@@ -66,7 +65,7 @@ function checkWatchers(assigs::Dict, cls::Clause)
             error("not reachable")
         end
     else
-        @assert (length(cls.watchers) == 2)
+        # @assert (length(cls.watchers) == 2)
         watcherst = map(x -> checkAssignment(assigs, cls.literals[x]), cls.watchers)
         if literalInState(watcherst, Satisfied)
             return None()
@@ -152,42 +151,6 @@ function pickVar(inst::SATInstance)
     end
     return Satisfied
 end
-function _dpll(inst::SATInstance)
-    verify_inst(inst)
-    function dpll()
-        #BCP
-        # println("starting dpll")
-        res = propUnitLiterals(inst)
-        if res isa Bad
-            return res
-        else
-            varToBranch = pickVar(inst)
-            if varToBranch == Satisfied
-                return None()
-            else
-                # newStackCall(inst)
-                assig = deepcopy(inst.varAssignment)
-                setAssignment(inst, varToBranch)
-                res = dpll()
-                if res isa None
-                    return None()
-                else
-                    # unwindStack(inst)
-                    # newStackCall(inst)
-                    inst.varAssignment = assig
-                    setAssignment(inst, -varToBranch)
-                    res = dpll()
-                    if res isa None
-                        return None()
-                    else
-                        return Bad()
-                    end
-                end
-            end
-        end
-    end
-    return dpll()
-end
 function compDict(d1, d2, l)
     k1 = Set(keys(d1))
     k2 = Set(keys(d2))
@@ -210,34 +173,33 @@ function opposite(x)
     end
 end
 
-function p_dpll(inst::SATInstance)
-    verify_inst(inst)
-    function dpll(i)
+function _dpll(inst::SATInstance)
+    # verify_inst(inst)
+    function dpll()
         #BCP
         # println("dpll level ",i)
         newStackCall(inst)
-        @assert(length(inst.decisionStack) == i)
+        # @assert(length(inst.decisionStack) == i)
         res = propUnitLiterals(inst)
         if res isa Bad
             unwindStack(inst)
             return res
         else
-            @assert(length(inst.decisionStack) == i)
+            # @assert(length(inst.decisionStack) == i)
             VTB = pickVar(inst)
             if VTB == Satisfied
                 return None()
             else
-                @assert(length(inst.decisionStack) == i)
-                assig = deepcopy(inst.varAssignment)
+                # @assert(length(inst.decisionStack) == i)
                 inst.varAssignment[VTB[1]] = VTB[2]
-                res = dpll(i + 1)
+                res = dpll()
                 if res isa None
                     return res
                 else
-                    @assert(length(inst.decisionStack) == i)
+                    # @assert(length(inst.decisionStack) == i)
                     inst.varAssignment[VTB[1]] = opposite(VTB[2])
                     # compDict(inst.varAssignment,assig,i)
-                    res = dpll(i + 1)
+                    res = dpll()
                     if res isa Bad
                         inst.varAssignment[VTB[1]] = Unset
                         unwindStack(inst)
@@ -247,12 +209,12 @@ function p_dpll(inst::SATInstance)
             end
         end
     end
-    return dpll(1)
+    return dpll()
 end
 
 function calc_inst(fl::String)
     inst = read_cnf(fl)
-    res = p_dpll(inst)
+    res = _dpll(inst)
     if res isa None
         giveOutput(fl, 1, SAT(inst.varAssignment))
     elseif res isa Bad
