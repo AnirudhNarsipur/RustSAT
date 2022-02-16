@@ -68,6 +68,8 @@ function checkWatchers(inst::SATInstance) where {T}
     assigs = inst.varAssignment
     watcherst = Vector{AbstractAssignment}(undef, 2)
     literalsholder = Vector{Tuple{inst.signedtp,AbstractAssignment}}(undef, inst.numVars)
+    undecidedholder = [1,2]
+
     function internal(cls::Clause{K}) where {K}
         if length(cls.watchers) == 0
             as = checkAssignment(assigs, cls.literals[1])
@@ -91,25 +93,28 @@ function checkWatchers(inst::SATInstance) where {T}
                 # literalsSt = map(x -> (x, checkAssignment(assigs, cls.literals[x])), 1:length(cls.literals))
                 #TODO multi filter
                 literalsSt = view(literalsholder, 1:lnlit)
-                satlit = filter(x -> x[2] == Satisfied, literalsSt)
-                undeclit = filter(x -> x[2] == Undecided, literalsSt)
                 setsat = 1
-                for lit in literalsSt
-                    if setsat == 3
+                numUndec = 0 
+                for i = 1:lnlit
+                    lit = literalsSt[i]
+                    if setsat == 3 || numUndec == 2
                         break
                     elseif lit[2] == Satisfied
                         cls.watchers[setsat] = lit[1]
                         setsat += 1
+                    elseif lit[2] == Undecided
+                        numUndec+=1
+                        undecidedholder[numUndec] = i
                     end
                 end
                 if setsat != 1
                     return None()
                 else
-                    numUndec = length(undeclit)
+                    undeclit = filter(x -> x[2] == Undecided, literalsSt)
                     if numUndec == 0
                         return Bad()
                     elseif numUndec == 1
-                        return Some(cls.literals[undeclit[1][1]])
+                        return Some(cls.literals[undecidedholder[1]])
                     else
                         @assert numUndec >= 2
                         cls.watchers[1] = undeclit[1][1]
