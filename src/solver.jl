@@ -160,16 +160,45 @@ function verify_inst(inst::SATInstance)
         @assert 1 <= key <= inst.numVars
     end
 end
+
 #Dumb Just assings everything to Positive
-function pickVar(inst::SATInstance)
-    for clause in inst.clauses
-        for literal in clause.literals
-            if checkAssignment(inst.varAssignment, literal) == Undecided
-                return Some((abs(literal), (literal > 0) ? Positive : Negative))
+function pickFirstVar(inst::SATInstance)
+    function internal()
+        for clause in inst.clauses
+            for literal in clause.literals
+                if checkAssignment(inst.varAssignment, literal) == Undecided
+                    return Some((abs(literal), (literal > 0) ? Positive : Negative))
+                end
             end
         end
+        return None()
     end
-    return None()
+    return internal
+end
+function pickJSW(inst::SATInstance)
+    jswraw = Vector{Float16}(undef, inst.numVars)
+    fill!(jswraw, 0.0)
+    clause_len = 0
+    t = 0
+    for clause in inst.clauses
+        clause_len = length(clause.literals)
+        for literal in clause.literals
+            jswraw[abs(literal)] += (2.0)^(-clause_len)
+        end
+    end
+    jswpair = [(index, val) for (index, val) in enumerate(jswraw)]
+    sort!(jswpair, by = x -> x[2], rev = true)
+    nv = inst.numVars
+    function internal()
+        for (lit, val) in jswpair
+            if inst.varAssignment[lit] == Unset
+                return Some((lit, Positive))
+            else
+                continue
+            end
+        end
+        return None()
+    end
 end
 function compDict(d1, d2, l)
     k1 = Set(keys(d1))
@@ -196,6 +225,7 @@ end
 function _dpll(inst::SATInstance)
     # verify_inst(inst)
     watcherfunc = checkWatchers(inst)
+    pickVar = pickJSW(inst)
     function dpll()
         #BCP
         # println("dpll level ",i)
@@ -207,7 +237,7 @@ function _dpll(inst::SATInstance)
             return res
         else
             # @assert(length(inst.decisionStack) == i)
-            VTB = pickVar(inst)
+            VTB = pickVar()
             if VTB isa None
                 return None()
             else
