@@ -76,6 +76,7 @@ end
 
 function giveOutput(fl :: String,time ,result :: Satisfiability)
    kv_json = (k,v) -> join(['"',k,"""": """,'"',v,'"'])
+   time = round(time,digits=2)
    if result isa UNSAT
     out = join([
         "{",
@@ -92,7 +93,7 @@ function giveOutput(fl :: String,time ,result :: Satisfiability)
         "{",
         kv_json("Instance",fl),",",
         kv_json("Time",time),",",
-        kv_json("Result","SAT") ,
+        kv_json("Result","SAT"),"," ,
         kv_json("Solution",strrep),
         "}"
     ],"")
