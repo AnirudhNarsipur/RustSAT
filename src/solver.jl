@@ -229,18 +229,18 @@ end
 function calc_inst(fl::String)
     inst = read_cnf(fl)
     res = _dpll(inst)
-    # if res isa None
-    #     giveOutput(fl, 1, SAT(inst.varAssignment))
-    # elseif res isa Bad
-    #     giveOutput(fl, 1.23, UNSAT())
-    # else
-    #     error("why oh why", res)
-    # end
+    if res isa None
+        giveOutput(fl, 1, SAT(inst.varAssignment))
+    elseif res isa Bad
+        giveOutput(fl, 1.23, UNSAT())
+    else
+        error("why oh why", res)
+    end
 end
-# @time calc_inst("small_inst/toy_solveable.cnf")
+@time calc_inst("small_inst/toy_solveable.cnf")
 # @time calc_inst("small_inst/large.cnf")
 
-@time calc_inst("input/C140.cnf")
+# @time calc_inst("input/C140.cnf")
 # @time calc_inst("test_inst/test3.cnf")
 # inst = read_cnf("small_inst/toy_solveable.cnf")
 # _dpll(inst)
