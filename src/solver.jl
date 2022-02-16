@@ -94,7 +94,7 @@ function checkWatchers(inst::SATInstance) where {T}
                 #TODO multi filter
                 literalsSt = view(literalsholder, 1:lnlit)
                 setsat = 1
-                numUndec = 0 
+                numUndec = 0
                 for i = 1:lnlit
                     lit = literalsSt[i]
                     if setsat == 3 || numUndec == 2
@@ -105,20 +105,26 @@ function checkWatchers(inst::SATInstance) where {T}
                     elseif lit[2] == Undecided
                         numUndec+=1
                         undecidedholder[numUndec] = i
+                        
                     end
                 end
                 if setsat != 1
                     return None()
                 else
-                    undeclit = filter(x -> x[2] == Undecided, literalsSt)
+                    # undeclit = filter(x -> x[2] == Undecided, literalsSt)
                     if numUndec == 0
                         return Bad()
                     elseif numUndec == 1
                         return Some(cls.literals[undecidedholder[1]])
                     else
-                        @assert numUndec >= 2
-                        cls.watchers[1] = undeclit[1][1]
-                        cls.watchers[2] = undeclit[2][1]
+                        # @assert numUndec >= 2
+                        # @assert 1 <= undecidedholder[1] <= lnlit
+                        # @assert 1 <= undecidedholder[2] <= lnlit
+                        # @assert undecidedholder[1] == undeclit[1][1]
+                        # @assert undecidedholder[2] == undeclit[2][1]
+
+                        cls.watchers[1] = undecidedholder[1]
+                        cls.watchers[2] = undecidedholder[2]
                         return None()
                     end
                 end
@@ -286,3 +292,5 @@ end
 # inst = read_cnf("small_inst/toy_solveable.cnf")
 # _dpll(inst)
 # dc = keys(inst.varAssignment)
+# @time check_inst("small_inst/toy_solveable.cnf")
+# @time calc_inst("input/C140.cnf")
