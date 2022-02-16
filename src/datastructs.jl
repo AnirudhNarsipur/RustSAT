@@ -65,7 +65,7 @@ function pop2DElem(dvec :: DynamicVec{DynamicVec{T}}) where {T}
         if tmp.top == 0
            return Bad()
         else
-            return Some(tmp.vec[1:tmp.top])
+            return Some(view(tmp.vec,1:tmp.top))
         end         
     end 
 end

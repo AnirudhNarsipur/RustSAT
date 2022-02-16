@@ -25,7 +25,7 @@ function checkAssignment(assigments::Dict{T,LiteralState}, literal::Number) wher
 end
 function updateStack(inst::SATInstance, literal::Number)
     # println("pushing ",literal," at level ",length(inst.decisionStack))
-    @assert 1 <= convert(inst.usignedtp, abs(literal)) <= inst.numVars
+    # @assert 1 <= convert(inst.usignedtp, abs(literal)) <= inst.numVars
     inst.varAssignment[abs(literal)] = (literal > 0) ? Positive : Negative
     push2DElem(inst.decisionStack, convert(inst.usignedtp, abs(literal)))
     return nothing
