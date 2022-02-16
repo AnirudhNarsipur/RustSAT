@@ -25,7 +25,7 @@ struct Clause{T}
     watchers::Vector{T}
 end
 Base.:(==)(x::Clause, y::Clause) = x.literals == y.literals && x.watchers == y.watchers
-struct SATInstance{T,K}
+mutable struct SATInstance{T,K}
     usignedtp::Type
     signedtp::Type
     numVars::T

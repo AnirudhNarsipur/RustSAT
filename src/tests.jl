@@ -64,17 +64,17 @@ end
 
 end
 
-# @testset "setAssignment" begin
-#     inst = initializeInstance(6,4)
-#     inst.varAssignment = Dict([(1,Unset),(2,Negative),(3,Positive),(4,Positive),(5,Unset),(6,Unset)])
-#     assigs = inst.varAssignment
-#     @test setAssignment(inst,-1) isa None
-#     @test assigs[1] == Negative
-#     @test setAssignment(inst,2) isa Bad
-#     @test setAssignment(inst,3) isa None
-#     @test setAssignment(inst,5) isa None
-#     @test assigs[5] == Positive
-# end
+@testset "setAssignment" begin
+    inst = initializeInstance(6,4)
+    inst.varAssignment = Dict([(1,Unset),(2,Negative),(3,Positive),(4,Positive),(5,Unset),(6,Unset)])
+    assigs = inst.varAssignment
+    @test setAssignment(inst,-1) isa None
+    @test assigs[1] == Negative
+    @test setAssignment(inst,2) isa Bad
+    @test setAssignment(inst,3) isa None
+    @test setAssignment(inst,5) isa None
+    @test assigs[5] == Positive
+end
 @testset "SAT Itself" begin
     # @test check_inst("input/C168_128.cnf")
     @test check_inst("small_inst/toy_solveable.cnf")

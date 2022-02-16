@@ -237,7 +237,7 @@ function calc_inst(fl::String)
         error("why oh why", res)
     end
 end
-@time calc_inst("small_inst/toy_solveable.cnf")
+# @time calc_inst("small_inst/toy_solveable.cnf")
 # @time calc_inst("small_inst/large.cnf")
 
 # @time calc_inst("input/C140.cnf")
