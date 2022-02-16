@@ -4,7 +4,13 @@ include("./dimacparser.jl")
 #guarenteed not to have empty clauses
 
 function literalInState(ls::Vector{AbstractAssignment}, st::AbstractAssignment)
-    any(map(x -> x == st, ls))
+    for elem in ls
+        if elem == st
+            return true
+
+        end
+    end
+    return false
 end
 
 function checkAssignment(assigments::Dict{T,LiteralState}, literal::Number) where {T<:Number}
@@ -19,9 +25,9 @@ function checkAssignment(assigments::Dict{T,LiteralState}, literal::Number) wher
 end
 function updateStack(inst::SATInstance, literal::Number)
     # println("pushing ",literal," at level ",length(inst.decisionStack))
-    @assert 1 <= convert(inst.usignedtp, abs(literal))  <= inst.numVars
+    @assert 1 <= convert(inst.usignedtp, abs(literal)) <= inst.numVars
     inst.varAssignment[abs(literal)] = (literal > 0) ? Positive : Negative
-    push2DElem(inst.decisionStack, convert(inst.usignedtp, abs(literal)) )
+    push2DElem(inst.decisionStack, convert(inst.usignedtp, abs(literal)))
     return nothing
 end
 function newStackCall(inst::SATInstance)
@@ -58,54 +64,58 @@ function setAssignment(inst::SATInstance, literal::Number)
     end
 end
 # Returns Option
-function checkWatchers(assigs::Dict{T,LiteralState}, cls::Clause{K}) where {T,K}
-    if length(cls.watchers) == 0
-        as = checkAssignment(assigs, cls.literals[1])
-        if as == Satisfied
-            return None()
-        elseif as == Conflict
-            return Bad()
-        elseif as == Undecided
-            return Some(cls.literals[1])
+function checkWatchers(inst :: SATInstance) where {T}
+    assigs = inst.varAssignment
+    function internal(cls::Clause{K}) where {K}
+        if length(cls.watchers) == 0
+            as = checkAssignment(assigs, cls.literals[1])
+            if as == Satisfied
+                return None()
+            elseif as == Conflict
+                return Bad()
+            elseif as == Undecided
+                return Some(cls.literals[1])
+            else
+                error("not reachable")
+            end
         else
-            error("not reachable")
-        end
-    else
-        # @assert (length(cls.watchers) == 2)
-        watcherst = map(x -> checkAssignment(assigs, cls.literals[x]), cls.watchers)
-        if literalInState(watcherst, Satisfied)
-            return None()
-        elseif literalInState(watcherst, Conflict)
-            literalsSt = map(x -> (x, checkAssignment(assigs, cls.literals[x])), 1:length(cls.literals))
-            #TODO multi filter
-            satlit = filter(x -> x[2] == Satisfied, literalsSt)
-            undeclit = filter(x -> x[2] == Undecided, literalsSt)
-            if !isempty(satlit)
-                for (index, lit) in enumerate(satlit)
-                    if index == 3
-                        break
+            # @assert (length(cls.watchers) == 2)
+            watcherst = map(x -> checkAssignment(assigs, cls.literals[x]), cls.watchers)
+            if literalInState(watcherst, Satisfied)
+                return None()
+            elseif literalInState(watcherst, Conflict)
+                literalsSt = map(x -> (x, checkAssignment(assigs, cls.literals[x])), 1:length(cls.literals))
+                #TODO multi filter
+                satlit = filter(x -> x[2] == Satisfied, literalsSt)
+                undeclit = filter(x -> x[2] == Undecided, literalsSt)
+                if !isempty(satlit)
+                    for (index, lit) in enumerate(satlit)
+                        if index == 3
+                            break
+                        else
+                            cls.watchers[index] = lit[1]
+                        end
+                    end
+                    return None()
+                else
+                    numUndec = length(undeclit)
+                    if numUndec == 0
+                        return Bad()
+                    elseif numUndec == 1
+                        return Some(cls.literals[undeclit[1][1]])
                     else
-                        cls.watchers[index] = lit[1]
+                        @assert numUndec >= 2
+                        cls.watchers[1] = undeclit[1][1]
+                        cls.watchers[2] = undeclit[2][1]
+                        return None()
                     end
                 end
-                return None()
-            else
-                numUndec = length(undeclit)
-                if numUndec == 0
-                    return Bad()
-                elseif numUndec == 1
-                    return Some(cls.literals[undeclit[1][1]])
-                else
-                    @assert numUndec >= 2
-                    cls.watchers[1] = undeclit[1][1]
-                    cls.watchers[2] = undeclit[2][1]
-                    return None()
-                end
             end
+            None()
         end
         None()
     end
-    None()
+    return internal
 end
 
 function assignLiteral(inst::SATInstance, literals::Number)
@@ -118,12 +128,12 @@ function assignLiteral(inst::SATInstance, literals::Number)
     return None
 end
 
-function propUnitLiterals(inst::SATInstance)
+function propUnitLiterals(inst::SATInstance,watcherfunc :: Function)
     cont = true
     while cont
         cont = false
         for clause in inst.clauses
-            res = checkWatchers(inst.varAssignment, clause)
+            res = watcherfunc(clause)
             if res isa None
                 continue
             elseif res isa Bad
@@ -184,13 +194,14 @@ function opposite(x::LiteralState)
 end
 
 function _dpll(inst::SATInstance)
-    verify_inst(inst)
+    # verify_inst(inst)
+    watcherfunc = checkWatchers(inst)
     function dpll()
         #BCP
         # println("dpll level ",i)
         newStackCall(inst)
         # @assert(length(inst.decisionStack) == i)
-        res = propUnitLiterals(inst)
+        res = propUnitLiterals(inst,watcherfunc)
         if res isa Bad
             unwindStack(inst)
             return res
@@ -240,7 +251,6 @@ end
 # @time calc_inst("small_inst/toy_solveable.cnf")
 # @time calc_inst("small_inst/large.cnf")
 
-# @time calc_inst("input/C140.cnf")
 # @time calc_inst("test_inst/test3.cnf")
 # inst = read_cnf("small_inst/toy_solveable.cnf")
 # _dpll(inst)
