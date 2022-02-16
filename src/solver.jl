@@ -64,8 +64,10 @@ function setAssignment(inst::SATInstance, literal::Number)
     end
 end
 # Returns Option
-function checkWatchers(inst :: SATInstance) where {T}
+function checkWatchers(inst::SATInstance) where {T}
     assigs = inst.varAssignment
+    watcherst = Vector{AbstractAssignment}(undef, 2)
+    literalsholder = Vector{Tuple{inst.signedtp,AbstractAssignment}}(undef, inst.numVars)
     function internal(cls::Clause{K}) where {K}
         if length(cls.watchers) == 0
             as = checkAssignment(assigs, cls.literals[1])
@@ -80,22 +82,27 @@ function checkWatchers(inst :: SATInstance) where {T}
             end
         else
             # @assert (length(cls.watchers) == 2)
-            watcherst = map(x -> checkAssignment(assigs, cls.literals[x]), cls.watchers)
+            map!(x -> checkAssignment(assigs, cls.literals[x]), watcherst, cls.watchers)
             if literalInState(watcherst, Satisfied)
                 return None()
             elseif literalInState(watcherst, Conflict)
-                literalsSt = map(x -> (x, checkAssignment(assigs, cls.literals[x])), 1:length(cls.literals))
+                lnlit = length(cls.literals)
+                map!(x -> (x, checkAssignment(assigs, cls.literals[x])), literalsholder, 1:lnlit)
+                # literalsSt = map(x -> (x, checkAssignment(assigs, cls.literals[x])), 1:length(cls.literals))
                 #TODO multi filter
+                literalsSt = view(literalsholder, 1:lnlit)
                 satlit = filter(x -> x[2] == Satisfied, literalsSt)
                 undeclit = filter(x -> x[2] == Undecided, literalsSt)
-                if !isempty(satlit)
-                    for (index, lit) in enumerate(satlit)
-                        if index == 3
-                            break
-                        else
-                            cls.watchers[index] = lit[1]
-                        end
+                setsat = 1
+                for lit in literalsSt
+                    if setsat == 3
+                        break
+                    elseif lit[2] == Satisfied
+                        cls.watchers[setsat] = lit[1]
+                        setsat += 1
                     end
+                end
+                if setsat != 1
                     return None()
                 else
                     numUndec = length(undeclit)
@@ -128,7 +135,7 @@ function assignLiteral(inst::SATInstance, literals::Number)
     return None
 end
 
-function propUnitLiterals(inst::SATInstance,watcherfunc :: Function)
+function propUnitLiterals(inst::SATInstance, watcherfunc::Function)
     cont = true
     while cont
         cont = false
@@ -200,18 +207,7 @@ function pickJSW(inst::SATInstance)
         return None()
     end
 end
-function compDict(d1, d2, l)
-    k1 = Set(keys(d1))
-    k2 = Set(keys(d2))
-    @assert k1 == k2
-    for key in k1
-        if d1[key] == d2[key]
-            continue
-        else
-            error("For ", key, " ", d1[key], " is not ", d2[key], " at level ", l)
-        end
-    end
-end
+
 function opposite(x::LiteralState)
     if x == Positive
         Negative
@@ -231,7 +227,7 @@ function _dpll(inst::SATInstance)
         # println("dpll level ",i)
         newStackCall(inst)
         # @assert(length(inst.decisionStack) == i)
-        res = propUnitLiterals(inst,watcherfunc)
+        res = propUnitLiterals(inst, watcherfunc)
         if res isa Bad
             unwindStack(inst)
             return res

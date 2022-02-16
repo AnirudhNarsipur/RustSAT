@@ -14,3 +14,15 @@ function check_inst(fl::String)
     _dpll(inst)
     is_sound(inst)
 end
+function compDict(d1, d2, l)
+    k1 = Set(keys(d1))
+    k2 = Set(keys(d2))
+    @assert k1 == k2
+    for key in k1
+        if d1[key] == d2[key]
+            continue
+        else
+            error("For ", key, " ", d1[key], " is not ", d2[key], " at level ", l)
+        end
+    end
+end
