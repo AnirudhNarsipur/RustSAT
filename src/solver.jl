@@ -1,4 +1,6 @@
+# module MainModule
 include("./dimacparser.jl")
+__precompile__()
 #Checks the watchers of the clause and 
 # returns literal if it exists
 #guarenteed not to have empty clauses
@@ -68,13 +70,13 @@ function checkWatchers(inst::SATInstance) where {T}
     assigs = inst.varAssignment
     watcherst = Vector{AbstractAssignment}(undef, 2)
     literalsholder = Vector{Tuple{inst.signedtp,AbstractAssignment}}(undef, inst.numVars)
-    undecidedholder = [1,2]
+    undecidedholder = [1, 2]
 
     function internal(cls::Clause{K}) where {K}
         if length(cls.watchers) == 0
             as = checkAssignment(assigs, cls.literals[1])
             if as == Satisfied
-                return None()
+                return Skip()
             elseif as == Conflict
                 return Bad()
             elseif as == Undecided
@@ -86,7 +88,7 @@ function checkWatchers(inst::SATInstance) where {T}
             # @assert (length(cls.watchers) == 2)
             map!(x -> checkAssignment(assigs, cls.literals[x]), watcherst, cls.watchers)
             if literalInState(watcherst, Satisfied)
-                return None()
+                return Skip()
             elseif literalInState(watcherst, Conflict)
                 lnlit = length(cls.literals)
                 map!(x -> (x, checkAssignment(assigs, cls.literals[x])), literalsholder, 1:lnlit)
@@ -103,13 +105,13 @@ function checkWatchers(inst::SATInstance) where {T}
                         cls.watchers[setsat] = lit[1]
                         setsat += 1
                     elseif lit[2] == Undecided
-                        numUndec+=1
+                        numUndec += 1
                         undecidedholder[numUndec] = i
-                        
+
                     end
                 end
                 if setsat != 1
-                    return None()
+                    return Skip()
                 else
                     # undeclit = filter(x -> x[2] == Undecided, literalsSt)
                     if numUndec == 0
@@ -152,7 +154,7 @@ function propUnitLiterals(inst::SATInstance, watcherfunc::Function)
         cont = false
         for clause in inst.clauses
             res = watcherfunc(clause)
-            if res isa None
+            if res isa None || res isa Skip
                 continue
             elseif res isa Bad
                 return Bad()
@@ -168,6 +170,63 @@ function propUnitLiterals(inst::SATInstance, watcherfunc::Function)
     return None()
 end
 
+function propUnitpureLit(inst::SATInstance, watcherfunc::Function)
+    purelit = Vector{Int8}(undef, inst.numVars)
+    fill!(purelit, 0)
+    signlit::Int8 = 0
+    absLit::inst.usignedtp = 0
+    function calcPureLit(clause::Clause)
+        for literal in clause.literals
+            abslit = abs(literal)
+            signlit = sign(literal)
+            if inst.varAssignment[abslit] != Unset
+                continue
+            elseif purelit[abslit] == 0
+                purelit[abslit] = signlit
+            elseif purelit[abslit] == 1 && signlit == -1
+                purelit[abslit] = 2
+            elseif purelit[abslit] == -1 && signlit == 1
+                purelit[abslit] = 2
+            else
+                continue
+            end
+        end
+    end
+
+    function assignPureLits()
+        for (lit, value) in enumerate(purelit)
+            if value == 1 || value == -1
+                assignLiteral(inst, value * lit)
+            else
+                continue
+            end
+        end
+    end
+    cont = true
+    while cont
+        cont = false
+        for clause in inst.clauses
+            res = watcherfunc(clause)
+            if res isa Skip
+                continue
+            elseif res isa None
+                calcPureLit(clause)
+                continue
+            elseif res isa Bad
+                return Bad()
+            elseif res isa Some || res isa Skip
+                calcPureLit(clause)
+                assignLiteral(inst, res.value)
+                cont = true
+                continue
+            else
+                error(join("should not be reached res was : ", res))
+            end
+        end
+    end
+    assignPureLits()
+    return None()
+end
 
 function verify_inst(inst::SATInstance)
     @assert length(keys(inst.varAssignment)) == inst.numVars
@@ -200,8 +259,17 @@ function pickJSW(inst::SATInstance)
     t = 0
     for clause in inst.clauses
         clause_len = length(clause.literals)
+        is_sat = false
         for literal in clause.literals
-            jswraw[abs(literal)] += (2.0)^(-clause_len)
+            if checkAssignment(inst.varAssignment, literal) == Satisfied
+                is_sat = true
+                break
+            end
+        end
+        if !is_sat
+            for literal in clause.literals
+                jswraw[abs(literal)] += (2.0)^(-clause_len)
+            end
         end
     end
     jswpair = [(index, val) for (index, val) in enumerate(jswraw)]
@@ -229,27 +297,31 @@ function opposite(x::LiteralState)
     end
 end
 # 1 - Positive -1 : Negative 0 : Undefined 2 : Mixed
-function pureLiteralElimination(inst :: SATInstance)
-    purelit = Vector{Int8}(undef,inst.numVars)
-    fill!(purelit,0)
+function pureLiteralElimination(inst::SATInstance)
+    purelit = Vector{Int8}(undef, inst.numVars)
+    fill!(purelit, 0)
+    signlit::Int8 = 0
+    absLit::inst.usignedtp = 0
     function internal()
-        fill!(purelit,0)
+        fill!(purelit, 0)
         for clause in inst.clauses
             for literal in clause.literals
-                if inst.varAssignment[abs(literal)] != Unset
+                abslit = abs(literal)
+                signlit = sign(literal)
+                if inst.varAssignment[abslit] != Unset
                     continue
-                elseif purelit[abs(literal)] == 0
-                    purelit[abs(literal)] = sign(literal)
-                elseif purelit[abs(literal)] == 1 && sign(literal) == -1
-                    purelit[abs(literal)] = 2
-                elseif purelit[abs(literal)] == -1 && sign(literal) == 1
-                    purelit[abs(literal)] = 2
+                elseif purelit[abslit] == 0
+                    purelit[abslit] = signlit
+                elseif purelit[abslit] == 1 && signlit == -1
+                    purelit[abslit] = 2
+                elseif purelit[abslit] == -1 && signlit == 1
+                    purelit[abslit] = 2
                 else
                     continue
                 end
             end
         end
-        for (lit,value) in enumerate(purelit)
+        for (lit, value) in enumerate(purelit)
             if value == 1
                 inst.varAssignment[lit] = Positive
             elseif value == -1
@@ -265,14 +337,17 @@ function _dpll(inst::SATInstance)
     # verify_inst(inst)
     watcherfunc = checkWatchers(inst)
     pickVar = pickJSW(inst)
+    pureLitfunc = pureLiteralElimination(inst)
     propUnitLiterals(inst, watcherfunc)
-    pureLiteralElimination(inst)()
-    function dpll()
+    pureLitfunc()
+    proptime::UInt8 = 3
+    function dpll(prop::UInt8)
         #BCP
         # println("dpll level ",i)
         newStackCall(inst)
         # @assert(length(inst.decisionStack) == i)
         res = propUnitLiterals(inst, watcherfunc)
+    
         if res isa Bad
             unwindStack(inst)
             return res
@@ -287,14 +362,15 @@ function _dpll(inst::SATInstance)
                 # println("VTB is ",VTB)
                 # @assert 1 <= VTB[1] <= inst.numVars
                 inst.varAssignment[VTB[1]] = VTB[2]
-                res = dpll()
+                nxt::UInt8 = (prop + 1)
+                res = dpll(nxt)
                 if res isa None
                     return res
                 else
                     # @assert(length(inst.decisionStack) == i)
                     inst.varAssignment[VTB[1]] = opposite(VTB[2])
                     # compDict(inst.varAssignment,assig,i)
-                    res = dpll()
+                    res = dpll(nxt)
                     if res isa Bad
                         inst.varAssignment[VTB[1]] = Unset
                         unwindStack(inst)
@@ -305,7 +381,8 @@ function _dpll(inst::SATInstance)
         end
     end
     # verify_inst(inst)
-    return dpll()
+    x::UInt8 = 0
+    return dpll(x)
 end
 
 function calc_inst(fl::String)
@@ -313,14 +390,20 @@ function calc_inst(fl::String)
     inst = read_cnf(fl)
     res = _dpll(inst)
     end_time = Base.Libc.time()
+    total_time = end_time - start_time
     if res isa None
-        giveOutput(fl, start_time-end_time, SAT(inst.varAssignment))
+        giveOutput(fl, total_time, SAT(inst.varAssignment))
     elseif res isa Bad
-        giveOutput(fl,start_time-end_time, UNSAT())
+        giveOutput(fl, total_time, UNSAT())
     else
         error("why oh why", res)
     end
 end
+# function __init__()
+#     calc_inst(ARGS[1])
+# end
+# end
+# @time calc_inst("input/C140.cnf")
 # @time calc_inst("small_inst/toy_solveable.cnf")
 # @time calc_inst("small_inst/large.cnf")
 
@@ -330,4 +413,3 @@ end
 # dc = keys(inst.varAssignment)
 # @time check_inst("small_inst/toy_solveable.cnf")
 # @time calc_inst("input/C1597_024.cnf")
-# @time calc_inst("input/C1065_064.cnf")
