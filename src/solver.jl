@@ -228,11 +228,45 @@ function opposite(x::LiteralState)
         error("bad")
     end
 end
-
+# 1 - Positive -1 : Negative 0 : Undefined 2 : Mixed
+function pureLiteralElimination(inst :: SATInstance)
+    purelit = Vector{Int8}(undef,inst.numVars)
+    fill!(purelit,0)
+    function internal()
+        fill!(purelit,0)
+        for clause in inst.clauses
+            for literal in clause.literals
+                if inst.varAssignment[abs(literal)] != Unset
+                    continue
+                elseif purelit[abs(literal)] == 0
+                    purelit[abs(literal)] = sign(literal)
+                elseif purelit[abs(literal)] == 1 && sign(literal) == -1
+                    purelit[abs(literal)] = 2
+                elseif purelit[abs(literal)] == -1 && sign(literal) == 1
+                    purelit[abs(literal)] = 2
+                else
+                    continue
+                end
+            end
+        end
+        for (lit,value) in enumerate(purelit)
+            if value == 1
+                inst.varAssignment[lit] = Positive
+            elseif value == -1
+                inst.varAssignment[lit] = Negative
+            else
+                continue
+            end
+        end
+    end
+    return internal
+end
 function _dpll(inst::SATInstance)
     # verify_inst(inst)
     watcherfunc = checkWatchers(inst)
     pickVar = pickJSW(inst)
+    propUnitLiterals(inst, watcherfunc)
+    pureLiteralElimination(inst)()
     function dpll()
         #BCP
         # println("dpll level ",i)
@@ -251,7 +285,7 @@ function _dpll(inst::SATInstance)
                 # @assert(length(inst.decisionStack) == i)
                 VTB = VTB.value
                 # println("VTB is ",VTB)
-                @assert 1 <= VTB[1] <= inst.numVars
+                # @assert 1 <= VTB[1] <= inst.numVars
                 inst.varAssignment[VTB[1]] = VTB[2]
                 res = dpll()
                 if res isa None
@@ -275,12 +309,14 @@ function _dpll(inst::SATInstance)
 end
 
 function calc_inst(fl::String)
+    start_time = Base.Libc.time()
     inst = read_cnf(fl)
     res = _dpll(inst)
+    end_time = Base.Libc.time()
     if res isa None
-        giveOutput(fl, 1, SAT(inst.varAssignment))
+        giveOutput(fl, start_time-end_time, SAT(inst.varAssignment))
     elseif res isa Bad
-        giveOutput(fl, 1.23, UNSAT())
+        giveOutput(fl,start_time-end_time, UNSAT())
     else
         error("why oh why", res)
     end
@@ -293,4 +329,5 @@ end
 # _dpll(inst)
 # dc = keys(inst.varAssignment)
 # @time check_inst("small_inst/toy_solveable.cnf")
-# @time calc_inst("input/C140.cnf")
+# @time calc_inst("input/C1597_024.cnf")
+# @time calc_inst("input/C1065_064.cnf")
