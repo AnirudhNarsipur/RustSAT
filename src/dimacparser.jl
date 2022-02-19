@@ -85,7 +85,7 @@ function giveOutput(fl :: String,time ,result :: Satisfiability)
         kv_json("Result","UNSAT") ,
         "}"
     ])
-   print(out)
+   println(out)
    return nothing
    else
     strrep = strip(join(assigStrRep(result.assignment)))
@@ -97,7 +97,7 @@ function giveOutput(fl :: String,time ,result :: Satisfiability)
         kv_json("Solution",strrep),
         "}"
     ],"")
-    print(out)
+    println(out)
     return nothing
    end
 end

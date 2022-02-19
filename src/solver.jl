@@ -1,4 +1,4 @@
-# module MainModule
+module MainModule
 include("./dimacparser.jl")
 __precompile__()
 #Checks the watchers of the clause and 
@@ -340,14 +340,20 @@ function _dpll(inst::SATInstance)
     pureLitfunc = pureLiteralElimination(inst)
     propUnitLiterals(inst, watcherfunc)
     pureLitfunc()
-    proptime::UInt8 = 3
+    proptime::UInt8 = 15
+    jswtime = 0 
     function dpll(prop::UInt8)
         #BCP
         # println("dpll level ",i)
         newStackCall(inst)
         # @assert(length(inst.decisionStack) == i)
         res = propUnitLiterals(inst, watcherfunc)
-    
+        if prop <= proptime
+            start = Base.Libc.time()
+            pickVar = pickJSW(inst)
+            fin = Base.Libc.time()
+            jswtime+=(fin-start)
+        end
         if res isa Bad
             unwindStack(inst)
             return res
@@ -382,7 +388,10 @@ function _dpll(inst::SATInstance)
     end
     # verify_inst(inst)
     x::UInt8 = 0
-    return dpll(x)
+
+    rs =  dpll(x)
+    # print("jsw time is ",jswtime)
+    return rs
 end
 
 function calc_inst(fl::String)
@@ -399,10 +408,10 @@ function calc_inst(fl::String)
         error("why oh why", res)
     end
 end
-# function __init__()
-#     calc_inst(ARGS[1])
-# end
-# end
+function __init__()
+    calc_inst(ARGS[1])
+end
+end
 # @time calc_inst("input/C140.cnf")
 # @time calc_inst("small_inst/toy_solveable.cnf")
 # @time calc_inst("small_inst/large.cnf")
@@ -413,3 +422,10 @@ end
 # dc = keys(inst.varAssignment)
 # @time check_inst("small_inst/toy_solveable.cnf")
 # @time calc_inst("input/C1597_024.cnf")
+# inst = read_cnf("input/C1597_024.cnf")
+# function testjsw(i)
+#     f = pickJSW(inst)
+#     for j=1:i
+#        f()
+#     end
+# end
