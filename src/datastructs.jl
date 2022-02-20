@@ -36,7 +36,6 @@ mutable struct SATInstance{T,K}
     decisionStack::DynamicVec{DynamicVec{T}}
     varClause :: Vector{Pair{DynamicVec{T},DynamicVec{T}}}
 end
-const ok2 = [Satisfied, Satisfied]
 function initializeDynamicVec(tp::Type)
     DynamicVec{tp}(0, Vector{tp}(undef, 1))
 
@@ -56,6 +55,13 @@ function popElem(dvec::DynamicVec{T}) where {T}
         tmp = dvec.vec[dvec.top]
         dvec.top -= 1
         return Some(tmp)
+    end
+end
+function viewDvec(dvec :: DynamicVec{T}) where {T}
+    if dvec.top == 0
+        Bad()
+    else
+        return Some(view(dvec.vec,1:dvec.top))
     end
 end
 function pop2DElem(dvec :: DynamicVec{DynamicVec{T}}) where {T}
@@ -78,15 +84,21 @@ function push2DElem(dvec :: DynamicVec{DynamicVec{T}},elem :: T) where {T}
     pushElem(dvec.vec[dvec.top],elem)
     return nothing
 end
-
+function initializeVarClause(numVars :: Number,tp::Type)
+    varClause = Vector{Pair{DynamicVec{tp},DynamicVec{tp}}}()
+    resize!(varClause,numVars)
+    for index=1:numVars
+        varClause[index] = Pair(initializeDynamicVec(tp),initializeDynamicVec(tp))
+    end
+    varClause
+end
 function initializeInstance(vars::Number, clauses::Number)
     sattp = getnumtype(clauses, vars)
     clausevec = Vector{Clause{sattp.second}}(undef, clauses)
     resize!(clausevec,clauses)
     SATType = SATInstance{sattp...}
     assigs = map(x -> (abs(x), Unset), 1:vars)
-    varClause = Vector{Pair{DynamicVec{sattp.first},DynamicVec{sattp.first}}}()
-    resize!(varClause,vars)
+    varClause = initializeVarClause(vars,sattp.first)
     SATType(sattp.first, sattp.second, vars, clauses, Dict(assigs), clausevec,initializeDynamicVec(DynamicVec{sattp.first}),varClause)
 end
 function getClause(literals, tp::Type)
@@ -118,6 +130,22 @@ function getnumtype(clauses::Number, vars::Number)
     end
     error("Clause set is too large Overflow")
 end
-function updateVarClause(inst :: SATInstance)
-    nothing
+# Update varClause index with results from clause at index
+function updateVarClause(inst :: SATInstance,index :: Number)
+    ablit = 0
+    for lit in inst.clauses[index].literals 
+        ablit = abs(lit)
+        if ablit == lit 
+            pushElem(inst.varClause[ablit].first,convert(inst.usignedtp, index))
+        else
+            pushElem(inst.varClause[ablit].second,convert(inst.usignedtp, index))
+        end
+    end
+end
+function getVarClauses(inst :: SATInstance,lit :: T) where T <: Integer
+    if sign(lit) == 1
+        return viewDvec(inst.varClause[lit].first)
+    else
+        return viewDvec(inst.varClause[lit].second)
+    end
 end

@@ -71,8 +71,8 @@ function checkWatchers(inst::SATInstance) where {T}
     watcherst = Vector{AbstractAssignment}(undef, 2)
     literalsholder = Vector{Tuple{inst.signedtp,AbstractAssignment}}(undef, inst.numVars)
     undecidedholder = [1, 2]
-    watcherstloop :: AbstractAssignment = Undecided 
-    cflc :: Bool = true
+    watcherstloop::AbstractAssignment = Undecided
+    cflc::Bool = true
     function internal(cls::Clause{K}) where {K}
         if length(cls.watchers) == 0
             as = checkAssignment(assigs, cls.literals[1])
@@ -90,8 +90,8 @@ function checkWatchers(inst::SATInstance) where {T}
             # map!(x -> checkAssignment(assigs, cls.literals[x]), watcherst, cls.watchers)
             cflct = false
             for index in cls.watchers
-                watcherstloop = checkAssignment(assigs,cls.literals[index])
-                if watcherstloop==Satisfied
+                watcherstloop = checkAssignment(assigs, cls.literals[index])
+                if watcherstloop == Satisfied
                     return Skip()
                 elseif watcherstloop == Conflict
                     cflct = true
@@ -139,19 +139,28 @@ function checkWatchers(inst::SATInstance) where {T}
     return internal
 end
 
-function assignLiteral(inst::SATInstance, literals::Number)
-    for lit in literals
-        res = setAssignment(inst, lit)
-        if res isa Bad
-            return Bad
-        end
+function assignLiteral(inst::SATInstance, lit::Number)
+    res = setAssignment(inst, lit)
+    if res isa Bad
+        return Bad
     end
     return None
+end
+function propUnitClause(inst::SATInstance, watcherfunc::Function, cindex::Number)
+    res = watcherfunc(inst.clauses[cindex])
+    if res isa Some
+        assignLiteral(inst, res.value)
+        foreach(x -> propUnitClause(inst, watcherfunc, x), getVarClauses(inst, res.value))
+    elseif res isa Option
+        return res
+    else
+        error(join("should not be reached res was : ", res))
+    end
 end
 
 function propUnitLiterals(inst::SATInstance, watcherfunc::Function)
     cont = true
-    while cont 
+    while cont
         cont = false
         for clause in inst.clauses
             res = watcherfunc(clause)
@@ -171,73 +180,6 @@ function propUnitLiterals(inst::SATInstance, watcherfunc::Function)
     return None()
 end
 
-function propUnitpureLit(inst::SATInstance, watcherfunc::Function)
-    purelit = Vector{Int8}(undef, inst.numVars)
-    fill!(purelit, 0)
-    signlit::Int8 = 0
-    absLit::inst.usignedtp = 0
-    function calcPureLit(clause::Clause)
-        for literal in clause.literals
-            abslit = abs(literal)
-            signlit = sign(literal)
-            if inst.varAssignment[abslit] != Unset
-                continue
-            elseif purelit[abslit] == 0
-                purelit[abslit] = signlit
-            elseif purelit[abslit] == 1 && signlit == -1
-                purelit[abslit] = 2
-            elseif purelit[abslit] == -1 && signlit == 1
-                purelit[abslit] = 2
-            else
-                continue
-            end
-        end
-    end
-
-    function assignPureLits()
-        for (lit, value) in enumerate(purelit)
-            if value == 1 || value == -1
-                assignLiteral(inst, value * lit)
-            else
-                continue
-            end
-        end
-    end
-    cont = true
-    while cont
-        cont = false
-        for clause in inst.clauses
-            res = watcherfunc(clause)
-            if res isa Skip
-                continue
-            elseif res isa None
-                calcPureLit(clause)
-                continue
-            elseif res isa Bad
-                return Bad()
-            elseif res isa Some || res isa Skip
-                calcPureLit(clause)
-                assignLiteral(inst, res.value)
-                cont = true
-                continue
-            else
-                error(join("should not be reached res was : ", res))
-            end
-        end
-    end
-    assignPureLits()
-    return None()
-end
-
-function verify_inst(inst::SATInstance)
-    @assert length(keys(inst.varAssignment)) == inst.numVars
-    for i = 1:inst.numVars
-        @assert inst.varAssignment[i] == Unset
-    end
-    for key in keys(inst.varAssignment)
-        @assert 1 <= key <= inst.numVars
-    end
-end
 
 #Dumb Just assings everything to Positive
 function pickFirstVar(inst::SATInstance)
@@ -343,7 +285,7 @@ function _dpll(inst::SATInstance)
     propUnitLiterals(inst, watcherfunc)
     pureLitfunc()
     proptime::UInt8 = 15
-    unitlittime = 0 
+    unitlittime = 0
     function dpll(prop::UInt8)
         #BCP
         # println("dpll level ",prop)
@@ -351,8 +293,8 @@ function _dpll(inst::SATInstance)
         # @assert(length(inst.decisionStack) == i)
         start = Base.Libc.time()
         res = propUnitLiterals(inst, watcherfunc)
-        fin =fin = Base.Libc.time()
-        unitlittime+=(fin-start)
+        fin = fin = Base.Libc.time()
+        unitlittime += (fin - start)
         # if prop <= proptime
         #     start = Base.Libc.time()
         #     pickVar = pickJSW(inst)
@@ -394,7 +336,7 @@ function _dpll(inst::SATInstance)
     # verify_inst(inst)
     x::UInt8 = 0
 
-    rs =  dpll(x)
+    rs = dpll(x)
     # print("jsw time is ",unitlittime)
     return rs
 end

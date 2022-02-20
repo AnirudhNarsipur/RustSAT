@@ -31,7 +31,7 @@ function read_cnf(fl::String)
                     giveOutput(fl,0,UNSAT)
                 end
                 satinstance.clauses[index] = clause
-                updateVarClause(satinstance)
+                updateVarClause(satinstance,index)
             end
             return satinstance
         end
