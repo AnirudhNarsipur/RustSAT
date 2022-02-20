@@ -1,12 +1,4 @@
 include("datastructs.jl")
-# showstruct(inst :: SATInstance) = println( "
-#  numVars: $(inst.numVars), 
-#  numClauses :  $(inst.numVars) \n
-#  varAssignment: $(inst.varAssignment) \n
-#  clauses: $(inst.clauses) \n 
-#  varToClause:  $(inst.varToClause) \n")
-
-
 function read_cnf(fl::String)
     try
         open(fl, "r") do io
@@ -25,32 +17,22 @@ function read_cnf(fl::String)
                     break
                 end
             end
-            #Remove redundancy here
             satinstance = initializeInstance(numVars, numClauses)
-            # if debug
-            #     println("SAT Instance is ", satinstance)
-
-            #     println("sattp is ", sattp)
-            # end
-            resize!(satinstance.clauses,numClauses)
+           
             literals = Vector{satinstance.signedtp}(undef,numVars)
             for (index, rawclause) in enumerate(itr)
                 if rawclause == ""
                     continue
                 end
-                # println("split :", split(clause))
                 tmp = split(rawclause)
                 map!(x -> parse(satinstance.signedtp, x),literals, tmp)
-                # println(nums)
-                # @assert last(literals) == 0
                 clause = getClause(literals[1:length(tmp)-1] , satinstance.signedtp)
                 if clause==nothing
                     giveOutput(fl,0,UNSAT)
                 end
                 satinstance.clauses[index] = clause
+                updateVarClause(satinstance)
             end
-            # showstruct(satinstance)
-            # println("Size of instance ",sizeof(satinstance)) 
             return satinstance
         end
     catch

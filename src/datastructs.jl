@@ -34,6 +34,7 @@ mutable struct SATInstance{T,K}
     varAssignment::Dict{T,LiteralState}
     clauses::Vector{Clause{K}}
     decisionStack::DynamicVec{DynamicVec{T}}
+    varClause :: Vector{Pair{DynamicVec{T},DynamicVec{T}}}
 end
 const ok2 = [Satisfied, Satisfied]
 function initializeDynamicVec(tp::Type)
@@ -81,9 +82,12 @@ end
 function initializeInstance(vars::Number, clauses::Number)
     sattp = getnumtype(clauses, vars)
     clausevec = Vector{Clause{sattp.second}}(undef, clauses)
+    resize!(clausevec,clauses)
     SATType = SATInstance{sattp...}
     assigs = map(x -> (abs(x), Unset), 1:vars)
-    SATType(sattp.first, sattp.second, vars, clauses, Dict(assigs), clausevec,initializeDynamicVec(DynamicVec{sattp.first}))
+    varClause = Vector{Pair{DynamicVec{sattp.first},DynamicVec{sattp.first}}}()
+    resize!(varClause,vars)
+    SATType(sattp.first, sattp.second, vars, clauses, Dict(assigs), clausevec,initializeDynamicVec(DynamicVec{sattp.first}),varClause)
 end
 function getClause(literals, tp::Type)
     @assert !(0 in literals)
@@ -113,4 +117,7 @@ function getnumtype(clauses::Number, vars::Number)
         end
     end
     error("Clause set is too large Overflow")
+end
+function updateVarClause(inst :: SATInstance)
+    nothing
 end

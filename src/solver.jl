@@ -1,4 +1,4 @@
-module MainModule
+# module MainModule
 include("./dimacparser.jl")
 __precompile__()
 #Checks the watchers of the clause and 
@@ -71,7 +71,8 @@ function checkWatchers(inst::SATInstance) where {T}
     watcherst = Vector{AbstractAssignment}(undef, 2)
     literalsholder = Vector{Tuple{inst.signedtp,AbstractAssignment}}(undef, inst.numVars)
     undecidedholder = [1, 2]
-
+    watcherstloop :: AbstractAssignment = Undecided 
+    cflc :: Bool = true
     function internal(cls::Clause{K}) where {K}
         if length(cls.watchers) == 0
             as = checkAssignment(assigs, cls.literals[1])
@@ -86,10 +87,17 @@ function checkWatchers(inst::SATInstance) where {T}
             end
         else
             # @assert (length(cls.watchers) == 2)
-            map!(x -> checkAssignment(assigs, cls.literals[x]), watcherst, cls.watchers)
-            if literalInState(watcherst, Satisfied)
-                return Skip()
-            elseif literalInState(watcherst, Conflict)
+            # map!(x -> checkAssignment(assigs, cls.literals[x]), watcherst, cls.watchers)
+            cflct = false
+            for index in cls.watchers
+                watcherstloop = checkAssignment(assigs,cls.literals[index])
+                if watcherstloop==Satisfied
+                    return Skip()
+                elseif watcherstloop == Conflict
+                    cflct = true
+                end
+            end
+            if cflct
                 lnlit = length(cls.literals)
                 map!(x -> (x, checkAssignment(assigs, cls.literals[x])), literalsholder, 1:lnlit)
                 # literalsSt = map(x -> (x, checkAssignment(assigs, cls.literals[x])), 1:length(cls.literals))
@@ -113,18 +121,11 @@ function checkWatchers(inst::SATInstance) where {T}
                 if setsat != 1
                     return Skip()
                 else
-                    # undeclit = filter(x -> x[2] == Undecided, literalsSt)
                     if numUndec == 0
                         return Bad()
                     elseif numUndec == 1
                         return Some(cls.literals[undecidedholder[1]])
                     else
-                        # @assert numUndec >= 2
-                        # @assert 1 <= undecidedholder[1] <= lnlit
-                        # @assert 1 <= undecidedholder[2] <= lnlit
-                        # @assert undecidedholder[1] == undeclit[1][1]
-                        # @assert undecidedholder[2] == undeclit[2][1]
-
                         cls.watchers[1] = undecidedholder[1]
                         cls.watchers[2] = undecidedholder[2]
                         return None()
@@ -150,7 +151,7 @@ end
 
 function propUnitLiterals(inst::SATInstance, watcherfunc::Function)
     cont = true
-    while cont
+    while cont 
         cont = false
         for clause in inst.clauses
             res = watcherfunc(clause)
@@ -275,6 +276,7 @@ function pickJSW(inst::SATInstance)
     jswpair = [(index, val) for (index, val) in enumerate(jswraw)]
     sort!(jswpair, by = x -> x[2], rev = true)
     nv = inst.numVars
+    # println("jsw pair is ",jswpair)
     function internal()
         for (lit, val) in jswpair
             if inst.varAssignment[lit] == Unset
@@ -341,19 +343,22 @@ function _dpll(inst::SATInstance)
     propUnitLiterals(inst, watcherfunc)
     pureLitfunc()
     proptime::UInt8 = 15
-    jswtime = 0 
+    unitlittime = 0 
     function dpll(prop::UInt8)
         #BCP
-        # println("dpll level ",i)
+        # println("dpll level ",prop)
         newStackCall(inst)
         # @assert(length(inst.decisionStack) == i)
+        start = Base.Libc.time()
         res = propUnitLiterals(inst, watcherfunc)
-        if prop <= proptime
-            start = Base.Libc.time()
-            pickVar = pickJSW(inst)
-            fin = Base.Libc.time()
-            jswtime+=(fin-start)
-        end
+        fin =fin = Base.Libc.time()
+        unitlittime+=(fin-start)
+        # if prop <= proptime
+        #     start = Base.Libc.time()
+        #     pickVar = pickJSW(inst)
+        #     fin = Base.Libc.time()
+        #     jswtime+=(fin-start)
+        # end
         if res isa Bad
             unwindStack(inst)
             return res
@@ -390,7 +395,7 @@ function _dpll(inst::SATInstance)
     x::UInt8 = 0
 
     rs =  dpll(x)
-    # print("jsw time is ",jswtime)
+    # print("jsw time is ",unitlittime)
     return rs
 end
 
@@ -408,10 +413,10 @@ function calc_inst(fl::String)
         error("why oh why", res)
     end
 end
-function __init__()
-    calc_inst(ARGS[1])
-end
-end
+# function __init__()
+#     calc_inst(ARGS[1])
+# end
+# end
 # @time calc_inst("input/C140.cnf")
 # @time calc_inst("small_inst/toy_solveable.cnf")
 # @time calc_inst("small_inst/large.cnf")
@@ -428,4 +433,18 @@ end
 #     for j=1:i
 #        f()
 #     end
+# end
+# function count_sat(inst :: SATInstance)
+#     num_sat = 0
+#     cflct = 0
+#     for clause in inst.clauses
+#         for lit in clause.literals
+#             x = checkAssignment(inst.varAssignment,lit)
+#             if x == Satisfied 
+#                 num_sat+=1
+#                 break
+#             end
+#         end
+#     end
+#     println("num sat is ",num_sat)
 # end
