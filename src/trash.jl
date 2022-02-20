@@ -65,3 +65,40 @@ function verify_inst(inst::SATInstance)
         @assert 1 <= key <= inst.numVars
     end
 end
+# 1 - Positive -1 : Negative 0 : Undefined 2 : Mixed
+function pureLiteralElimination(inst::SATInstance)
+    purelit = Vector{Int8}(undef, inst.numVars)
+    fill!(purelit, 0)
+    signlit::Int8 = 0
+    absLit::inst.usignedtp = 0
+    function internal()
+        fill!(purelit, 0)
+        for clause in inst.clauses
+            for literal in clause.literals
+                abslit = abs(literal)
+                signlit = sign(literal)
+                if inst.varAssignment[abslit] != Unset
+                    continue
+                elseif purelit[abslit] == 0
+                    purelit[abslit] = signlit
+                elseif purelit[abslit] == 1 && signlit == -1
+                    purelit[abslit] = 2
+                elseif purelit[abslit] == -1 && signlit == 1
+                    purelit[abslit] = 2
+                else
+                    continue
+                end
+            end
+        end
+        for (lit, value) in enumerate(purelit)
+            if value == 1
+                inst.varAssignment[lit] = Positive
+            elseif value == -1
+                inst.varAssignment[lit] = Negative
+            else
+                continue
+            end
+        end
+    end
+    return internal
+end

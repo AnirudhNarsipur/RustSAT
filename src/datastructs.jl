@@ -146,6 +146,6 @@ function getVarClauses(inst :: SATInstance,lit :: T) where T <: Integer
     if sign(lit) == 1
         return viewDvec(inst.varClause[lit].first)
     else
-        return viewDvec(inst.varClause[lit].second)
+        return viewDvec(inst.varClause[abs(lit)].second)
     end
 end

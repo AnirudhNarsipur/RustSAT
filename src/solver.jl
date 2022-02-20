@@ -150,7 +150,13 @@ function propUnitClause(inst::SATInstance, watcherfunc::Function, cindex::Number
     res = watcherfunc(inst.clauses[cindex])
     if res isa Some
         assignLiteral(inst, res.value)
-        foreach(x -> propUnitClause(inst, watcherfunc, x), getVarClauses(inst, res.value))
+        varClauses = getVarClauses(inst, -res.value)
+        if varClauses isa Bad
+            return None()
+        else
+            foreach(x -> propUnitClause(inst, watcherfunc, x), varClauses.value)
+            return None()
+        end
     elseif res isa Option
         return res
     else
@@ -159,6 +165,20 @@ function propUnitClause(inst::SATInstance, watcherfunc::Function, cindex::Number
 end
 
 function propUnitLiterals(inst::SATInstance, watcherfunc::Function)
+    for cindex = 1:inst.numClauses
+        res = propUnitClause(inst, watcherfunc, cindex)
+        if res isa Bad
+            return res
+        elseif res isa Option
+            continue
+        else
+            error(join("should not be reached res was : ", res))
+        end
+    end
+    return None()
+end
+
+function propUnitLiteralsGood(inst::SATInstance, watcherfunc::Function)
     cont = true
     while cont
         cont = false
@@ -179,7 +199,6 @@ function propUnitLiterals(inst::SATInstance, watcherfunc::Function)
     end
     return None()
 end
-
 
 #Dumb Just assings everything to Positive
 function pickFirstVar(inst::SATInstance)
@@ -217,8 +236,6 @@ function pickJSW(inst::SATInstance)
     end
     jswpair = [(index, val) for (index, val) in enumerate(jswraw)]
     sort!(jswpair, by = x -> x[2], rev = true)
-    nv = inst.numVars
-    # println("jsw pair is ",jswpair)
     function internal()
         for (lit, val) in jswpair
             if inst.varAssignment[lit] == Unset
@@ -277,6 +294,16 @@ function pureLiteralElimination(inst::SATInstance)
     end
     return internal
 end
+function checkConflict(inst :: SATInstance,watcherfunc :: Function)
+    res :: Option = None()
+    for clause in inst.clauses
+        res = watcherfunc(clause)
+        if res isa Bad
+            return Bad()
+        end
+    end
+    return None()
+end
 function _dpll(inst::SATInstance)
     # verify_inst(inst)
     watcherfunc = checkWatchers(inst)
@@ -284,7 +311,6 @@ function _dpll(inst::SATInstance)
     pureLitfunc = pureLiteralElimination(inst)
     propUnitLiterals(inst, watcherfunc)
     pureLitfunc()
-    proptime::UInt8 = 15
     unitlittime = 0
     function dpll(prop::UInt8)
         #BCP
@@ -295,34 +321,22 @@ function _dpll(inst::SATInstance)
         res = propUnitLiterals(inst, watcherfunc)
         fin = fin = Base.Libc.time()
         unitlittime += (fin - start)
-        # if prop <= proptime
-        #     start = Base.Libc.time()
-        #     pickVar = pickJSW(inst)
-        #     fin = Base.Libc.time()
-        #     jswtime+=(fin-start)
-        # end
         if res isa Bad
             unwindStack(inst)
             return res
         else
-            # @assert(length(inst.decisionStack) == i)
             VTB = pickVar()
             if VTB isa None
-                return None()
+                return checkConflict(inst,watcherfunc)
             else
-                # @assert(length(inst.decisionStack) == i)
                 VTB = VTB.value
-                # println("VTB is ",VTB)
-                # @assert 1 <= VTB[1] <= inst.numVars
                 inst.varAssignment[VTB[1]] = VTB[2]
                 nxt::UInt8 = (prop + 1)
                 res = dpll(nxt)
                 if res isa None
                     return res
                 else
-                    # @assert(length(inst.decisionStack) == i)
                     inst.varAssignment[VTB[1]] = opposite(VTB[2])
-                    # compDict(inst.varAssignment,assig,i)
                     res = dpll(nxt)
                     if res isa Bad
                         inst.varAssignment[VTB[1]] = Unset
@@ -333,11 +347,8 @@ function _dpll(inst::SATInstance)
             end
         end
     end
-    # verify_inst(inst)
     x::UInt8 = 0
-
     rs = dpll(x)
-    # print("jsw time is ",unitlittime)
     return rs
 end
 
@@ -358,35 +369,4 @@ end
 # function __init__()
 #     calc_inst(ARGS[1])
 # end
-# end
-# @time calc_inst("input/C140.cnf")
-# @time calc_inst("small_inst/toy_solveable.cnf")
-# @time calc_inst("small_inst/large.cnf")
-
-# @time calc_inst("test_inst/test3.cnf")
-# inst = read_cnf("small_inst/toy_solveable.cnf")
-# _dpll(inst)
-# dc = keys(inst.varAssignment)
-# @time check_inst("small_inst/toy_solveable.cnf")
-# @time calc_inst("input/C1597_024.cnf")
-# inst = read_cnf("input/C1597_024.cnf")
-# function testjsw(i)
-#     f = pickJSW(inst)
-#     for j=1:i
-#        f()
-#     end
-# end
-# function count_sat(inst :: SATInstance)
-#     num_sat = 0
-#     cflct = 0
-#     for clause in inst.clauses
-#         for lit in clause.literals
-#             x = checkAssignment(inst.varAssignment,lit)
-#             if x == Satisfied 
-#                 num_sat+=1
-#                 break
-#             end
-#         end
-#     end
-#     println("num sat is ",num_sat)
 # end

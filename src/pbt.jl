@@ -11,8 +11,12 @@ function is_sound(inst::SATInstance)
 end
 function check_inst(fl::String)
     inst = read_cnf(fl)
-    _dpll(inst)
+    res = _dpll(inst)
+    if res isa Bad
+        println("Is UNSAT can't check")
+    else
     is_sound(inst)
+    end
 end
 function compDict(d1, d2, l)
     k1 = Set(keys(d1))

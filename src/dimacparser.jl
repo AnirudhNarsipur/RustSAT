@@ -27,7 +27,7 @@ function read_cnf(fl::String)
                 tmp = split(rawclause)
                 map!(x -> parse(satinstance.signedtp, x),literals, tmp)
                 clause = getClause(literals[1:length(tmp)-1] , satinstance.signedtp)
-                if clause==nothing
+                if clause===nothing
                     giveOutput(fl,0,UNSAT)
                 end
                 satinstance.clauses[index] = clause
