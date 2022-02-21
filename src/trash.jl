@@ -102,3 +102,39 @@ function pureLiteralElimination(inst::SATInstance)
     end
     return internal
 end
+function propUnitLiteralsGood(inst::SATInstance, watcherfunc::Function)
+    cont = true
+    while cont
+        cont = false
+        for cindex in 1:inst.numClauses
+            res = watcherfunc(inst.clauses[cindex])
+            if res isa None || res isa Skip
+                continue
+            elseif res isa Bad
+                return Bad()
+            elseif res isa Some
+                assignLiteral(inst, res.value)
+                cont = true
+                continue
+            else
+                error(join("should not be reached res was : ", res))
+            end
+        end
+    end
+    return None()
+end
+
+#Dumb Just assings everything to Positive
+function pickFirstVar(inst::SATInstance)
+    function internal()
+        for clause in inst.clauses
+            for literal in clause.literals
+                if checkAssignment(inst.varAssignment, literal) == Undecided
+                    return Some((abs(literal), (literal > 0) ? Positive : Negative))
+                end
+            end
+        end
+        return None()
+    end
+    return internal
+end

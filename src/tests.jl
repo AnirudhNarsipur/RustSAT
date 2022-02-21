@@ -85,7 +85,7 @@ end
 @testset "SAT Itself" begin
     @test check_inst("input/C140.cnf")
     @test check_inst("small_inst/toy_solveable.cnf")
-    # @test check_inst("input/C181_3151.cnf")
+    @test check_inst("input/C181_3151.cnf")
 end
 
 @testset "DynamicVec" begin

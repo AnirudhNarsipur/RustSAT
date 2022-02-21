@@ -154,7 +154,12 @@ function propUnitClause(inst::SATInstance, watcherfunc::Function, cindex::Number
         if varClauses isa Bad
             return None()
         else
-            foreach(x -> propUnitClause(inst, watcherfunc, x), varClauses.value)
+            for val in varClauses.value
+                prop = propUnitClause(inst, watcherfunc, val)
+                if prop isa Bad
+                    return prop
+                end
+            end
             return None()
         end
     elseif res isa Option
@@ -176,43 +181,6 @@ function propUnitLiterals(inst::SATInstance, watcherfunc::Function)
         end
     end
     return None()
-end
-
-function propUnitLiteralsGood(inst::SATInstance, watcherfunc::Function)
-    cont = true
-    while cont
-        cont = false
-        for clause in inst.clauses
-            res = watcherfunc(clause)
-            if res isa None || res isa Skip
-                continue
-            elseif res isa Bad
-                return Bad()
-            elseif res isa Some
-                assignLiteral(inst, res.value)
-                cont = true
-                continue
-            else
-                error(join("should not be reached res was : ", res))
-            end
-        end
-    end
-    return None()
-end
-
-#Dumb Just assings everything to Positive
-function pickFirstVar(inst::SATInstance)
-    function internal()
-        for clause in inst.clauses
-            for literal in clause.literals
-                if checkAssignment(inst.varAssignment, literal) == Undecided
-                    return Some((abs(literal), (literal > 0) ? Positive : Negative))
-                end
-            end
-        end
-        return None()
-    end
-    return internal
 end
 function pickJSW(inst::SATInstance)
     jswraw = Vector{Float16}(undef, inst.numVars)
@@ -246,6 +214,27 @@ function pickJSW(inst::SATInstance)
         end
         return None()
     end
+end
+function propUnitLiteralsGood(inst::SATInstance, watcherfunc::Function)
+    cont = true
+    while cont
+        cont = false
+        for cindex in 1:inst.numClauses
+            res = watcherfunc(inst.clauses[cindex])
+            if res isa None || res isa Skip
+                continue
+            elseif res isa Bad
+                return Bad()
+            elseif res isa Some
+                assignLiteral(inst, res.value)
+                cont = true
+                continue
+            else
+                error(join("should not be reached res was : ", res))
+            end
+        end
+    end
+    return None()
 end
 
 function opposite(x::LiteralState)
@@ -294,8 +283,8 @@ function pureLiteralElimination(inst::SATInstance)
     end
     return internal
 end
-function checkConflict(inst :: SATInstance,watcherfunc :: Function)
-    res :: Option = None()
+function checkConflict(inst::SATInstance, watcherfunc::Function)
+    res::Option = None()
     for clause in inst.clauses
         res = watcherfunc(clause)
         if res isa Bad
@@ -309,35 +298,33 @@ function _dpll(inst::SATInstance)
     watcherfunc = checkWatchers(inst)
     pickVar = pickJSW(inst)
     pureLitfunc = pureLiteralElimination(inst)
-    propUnitLiterals(inst, watcherfunc)
+    propUnitLiteralsGood(inst, watcherfunc)
     pureLitfunc()
-    unitlittime = 0
-    function dpll(prop::UInt8)
+    proptime = 0 
+    function dpll()
         #BCP
         # println("dpll level ",prop)
         newStackCall(inst)
-        # @assert(length(inst.decisionStack) == i)
         start = Base.Libc.time()
-        res = propUnitLiterals(inst, watcherfunc)
-        fin = fin = Base.Libc.time()
-        unitlittime += (fin - start)
+        res = propUnitLiteralsGood(inst, watcherfunc)
+        fin = Base.Libc.time()
+        proptime+=(fin-start)
         if res isa Bad
             unwindStack(inst)
             return res
         else
             VTB = pickVar()
             if VTB isa None
-                return checkConflict(inst,watcherfunc)
+                return checkConflict(inst, watcherfunc)
             else
                 VTB = VTB.value
                 inst.varAssignment[VTB[1]] = VTB[2]
-                nxt::UInt8 = (prop + 1)
-                res = dpll(nxt)
+                res = dpll()
                 if res isa None
                     return res
                 else
                     inst.varAssignment[VTB[1]] = opposite(VTB[2])
-                    res = dpll(nxt)
+                    res = dpll()
                     if res isa Bad
                         inst.varAssignment[VTB[1]] = Unset
                         unwindStack(inst)
@@ -347,8 +334,8 @@ function _dpll(inst::SATInstance)
             end
         end
     end
-    x::UInt8 = 0
-    rs = dpll(x)
+    rs = dpll()
+    println("proptime is ",proptime)
     return rs
 end
 
