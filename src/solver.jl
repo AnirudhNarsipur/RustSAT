@@ -181,30 +181,18 @@ function propUnitLiterals(inst::SATInstance, watcherfunc::Function, vr::T,dp) wh
         return None()
     end
     res::Option = aBad
-    for cindex in getVarClauses(inst, vr)
+    for cindex in getVarClauses(inst,vr)
         res = watcherfunc(inst.clauses[cindex])
-        if res isa Some
-            assignLiteral(inst, res.value)
-            res = propUnitLiterals(inst, watcherfunc, -res.value,dp)
-        end
-        if res isa Bad
-            return aBad
-        elseif res isa Option
+        if res isa None
             continue
-        else
-            error(join("should not be reached res was : ", res))
-        end
-    end
-    for cindex in getVarClauses(inst, -vr)
-        res = watcherfunc(inst.clauses[cindex])
-        if res isa Some
+        elseif res isa Bad
+            return Bad()
+        elseif res isa Some
             assignLiteral(inst, res.value)
-            res = propUnitLiterals(inst, watcherfunc, -res.value,dp)
-        end
-        if res isa Bad
-            return aBad
-        elseif res isa Option
-            continue
+            res = propUnitLiterals(inst,watcherfunc,-res.value,dp)
+            if res isa Bad
+                return Bad()
+            end
         else
             error(join("should not be reached res was : ", res))
         end
@@ -314,13 +302,10 @@ function _dpll(inst::SATInstance)
     function dpll(vr::T) where {T<:Integer}
         #BCP
         dpp+=1
-        println("at ",dpp," vr is ",vr)
+        # println("at ",dpp," vr is ",vr)
         newStackCall(inst)
-        # if dpp > 2
-        #     return None()
-        # end
         start = Base.Libc.time()
-        res = propUnitLiteralsFull(inst, watcherfunc,-vr,dpp)
+        res = propUnitLiterals(inst, watcherfunc,-vr,dpp)
         fin = Base.Libc.time()
         proptime += (fin - start)
         if res isa Bad
