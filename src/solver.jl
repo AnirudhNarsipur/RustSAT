@@ -1,4 +1,4 @@
-# module MainModule
+module MainModule
 include("./dimacparser.jl")
 __precompile__()
 #Checks the watchers of the clause and 
@@ -141,12 +141,13 @@ end
 function propUnitClause(inst::SATInstance, watcherfunc::Function, lit::T) where {T<:Integer}
     res::Option = aBad
     for cindex in getVarClauses(inst, lit)
+        clause = inst.clauses[cindex]
         res = watcherfunc(inst.clauses[cindex])
         if res isa Bad
             return res
         elseif res isa Some
             assignLiteral(inst, res.value)
-            if propUnitClause(inst, watcherfunc, res.value) isa Bad
+            if propUnitClause(inst, watcherfunc, -res.value) isa Bad
                 return aBad
             end
         else
@@ -157,25 +158,36 @@ function propUnitClause(inst::SATInstance, watcherfunc::Function, lit::T) where 
 end
 
 function propUnitLiterals(inst::SATInstance, watcherfunc::Function, vr::T) where {T<:Integer}
-    return propUnitClause(inst, watcherfunc, vr)
-end
-function propUnitLiteralsGood(inst::SATInstance, watcherfunc::Function)
-    cont = true
-    while cont
-        cont = false
-        for cindex in 1:inst.numClauses
-            res = watcherfunc(inst.clauses[cindex])
-            if res isa None
-                continue
-            elseif res isa Bad
-                return Bad()
-            elseif res isa Some
-                assignLiteral(inst, res.value)
-                cont = true
-                continue
-            else
-                error(join("should not be reached res was : ", res))
-            end
+    if vr == 0
+        return None()
+    end
+    res::Option = aBad
+    # vw = getVarClauses(inst, vr)
+    for cindex in getVarClauses(inst, vr)
+        clause = inst.clauses[cindex]
+        res = watcherfunc(inst.clauses[cindex])
+        if res isa Some
+            # if !(cindex in vw)
+            #     print("Cindex is ", cindex, " res was ", res, " vr was ", vr, " but vw was ")
+            #     for i in vw
+            #         print(i, " ")
+            #     end
+            #     println(" ")
+            #     print("Clause was : ")
+            #     for i in clause.literals
+            #         print("(", i, ", ", inst.varAssignment[abs(i)], ") ", ", ")
+            #     end
+            #     println("")
+            # end
+            assignLiteral(inst, res.value)
+            res = propUnitLiterals(inst, watcherfunc, -res.value)
+        end
+        if res isa Bad
+            return aBad
+        elseif res isa Option
+            continue
+        else
+            error(join("should not be reached res was : ", res))
         end
     end
     return None()
@@ -206,7 +218,7 @@ function pickJSW(inst::SATInstance)
     function internal()
         for (lit, val) in jswpair
             if inst.varAssignment[lit] == Unset
-                return Some(lit)
+                return Some((lit, Positive))
             else
                 continue
             end
@@ -276,21 +288,16 @@ function _dpll(inst::SATInstance)
     watcherfunc = checkWatchers(inst)
     pickVar = pickJSW(inst)
     pureLitfunc = pureLiteralElimination(inst)
-    # propUnitLiterals(inst, watcherfunc)
-    pureLitfunc()
+    propUnitLiterals(inst, watcherfunc, 0)
+    # pureLitfunc()
     proptime = 0
     function dpll(vr::T) where {T<:Integer}
         #BCP
-        # println("dpll level ",prop)
         newStackCall(inst)
-        res = if vr != 0
-            start = Base.Libc.time()
-            res = propUnitLiterals(inst, watcherfunc, vr)
-            fin = Base.Libc.time()
-            proptime += (fin - start)
-        else
-            None()
-        end
+        start = Base.Libc.time()
+        res = propUnitLiterals(inst, watcherfunc, -vr)
+        fin = Base.Libc.time()
+        proptime += (fin - start)
         if res isa Bad
             unwindStack(inst)
             return res
@@ -301,12 +308,12 @@ function _dpll(inst::SATInstance)
             else
                 VTB = VTB.value
                 inst.varAssignment[VTB[1]] = Positive
-                res = dpll(VTB)
+                res = dpll(VTB[1])
                 if res isa None
                     return res
                 else
                     inst.varAssignment[VTB[1]] = Negative
-                    res = dpll(-VTB)
+                    res = dpll(-VTB[1])
                     if res isa Bad
                         inst.varAssignment[VTB[1]] = Unset
                         unwindStack(inst)
@@ -335,8 +342,8 @@ function calc_inst(fl::String)
         error("why oh why", res)
     end
 end
-# function __init__()
-#     calc_inst(ARGS[1])
-# end
-# end
-calc_inst("small_inst/toy_solveable.cnf")
+function __init__()
+    calc_inst(ARGS[1])
+end
+end
+# calc_inst("small_inst/toy_solveable.cnf")
