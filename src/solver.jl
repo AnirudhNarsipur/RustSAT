@@ -140,7 +140,7 @@ function assignLiteral(inst::SATInstance, lit::Number)
     return None
 end
 
-function propUnitLiteralsFull(inst::SATInstance, watcherfunc::Function,vr,dp)
+function propUnitLiteralsFull(inst::SATInstance, watcherfunc::Function,vr :: T) where T <: Integer
     cont = true
     while cont
         cont = false
@@ -174,7 +174,7 @@ function printClause(inst :: SATInstance,c )
     println("")   
 end
 
-function propUnitLiterals(inst::SATInstance, watcherfunc::Function, vr::T,dp) where {T<:Integer}
+function propUnitLiterals(inst::SATInstance, watcherfunc::Function, vr::T) where {T<:Integer}
     if vr == 0
         return None()
     end
@@ -187,7 +187,7 @@ function propUnitLiterals(inst::SATInstance, watcherfunc::Function, vr::T,dp) wh
             return Bad()
         elseif res isa Some
             assignLiteral(inst, res.value)
-            res = propUnitLiterals(inst,watcherfunc,-res.value,dp)
+            res = propUnitLiterals(inst,watcherfunc,-res.value)
             if res isa Bad
                 return Bad()
             end
@@ -302,21 +302,21 @@ function _dpll(inst::SATInstance)
     watcherfunc = checkWatchers(inst)
     pickVar = pickJSW(inst)
     pureLitfunc = pureLiteralElimination(inst)
-    propUnitLiteralsFull(inst, watcherfunc,0,0)
+    propUnitLiteralsFull(inst, watcherfunc,0)
     # pureLitfunc()
     proptime = 0
-    dpp = 0
+    # dpp = 0
     function dpll(vr::T) where {T<:Integer}
         #BCP
-        dpp+=1
+        # dpp+=1
         # println("at ",dpp," vr is ",vr)
         inst.assigCount+=1
         newStackCall(inst)
         start = Base.Libc.time()
-        res = propUnitLiterals(inst, watcherfunc,-vr,dpp)
+        res = propUnitLiterals(inst, watcherfunc,-vr)
         fin = Base.Libc.time()
         proptime += (fin - start)
-        if inst.assigCount > 5 && isSatisfied(inst,watcherfunc)
+        if inst.assigCount > 3 && isSatisfied(inst,watcherfunc)
             return None()
         end
         if res isa Bad
@@ -345,7 +345,7 @@ function _dpll(inst::SATInstance)
         end
     end
     rs = dpll(0)
-    println("proptime is ", proptime," dpp is ",dpp)
+    # println("proptime is ", proptime," dpp is ",dpp)
     return rs
 end
 
