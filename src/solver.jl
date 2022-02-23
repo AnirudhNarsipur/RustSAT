@@ -77,7 +77,7 @@ function checkWatchers(inst::SATInstance) where {T}
         if length(cls.watchers) == 0
             as = checkAssignment(assigs, cls.literals[1])
             if as == Satisfied
-                return None()
+                return Skip()
             elseif as == Conflict
                 return Bad()
             elseif as == Undecided
@@ -88,7 +88,7 @@ function checkWatchers(inst::SATInstance) where {T}
         else
             map!(x -> checkAssignment(assigs, cls.literals[x]), watcherst, cls.watchers)
             if literalInState(watcherst, Satisfied)
-                return None()
+                return Skip()
             elseif literalInState(watcherst, Conflict)
                 lnlit = length(cls.literals)
                 map!(x -> (x, checkAssignment(assigs, cls.literals[x])), literalsholder, 1:lnlit)
@@ -111,7 +111,7 @@ function checkWatchers(inst::SATInstance) where {T}
                     end
                 end
                 if setsat != 1
-                    return None()
+                    return Skip()
                 else
                     if numUndec == 0
                         return aBad
@@ -132,6 +132,7 @@ function checkWatchers(inst::SATInstance) where {T}
 end
 
 function assignLiteral(inst::SATInstance, lit::Number)
+    inst.assigCount = 0
     res = setAssignment(inst, lit)
     if res isa Bad
         return Bad
@@ -146,7 +147,7 @@ function propUnitLiteralsFull(inst::SATInstance, watcherfunc::Function,vr,dp)
         for cindex =1:inst.numClauses
             clause = inst.clauses[cindex]
             res = watcherfunc(clause)
-            if res isa None
+            if res isa None || res isa Skip
                 continue
             elseif res isa Bad
                 # print("Returning bad at cindex ",cindex," vr : ",vr, " clause : ")
@@ -180,7 +181,7 @@ function propUnitLiterals(inst::SATInstance, watcherfunc::Function, vr::T,dp) wh
     res::Option = aBad
     for cindex in getVarClauses(inst,vr)
         res = watcherfunc(inst.clauses[cindex])
-        if res isa None
+        if res isa None || res isa Skip
             continue
         elseif res isa Bad
             return Bad()
@@ -287,6 +288,15 @@ function checkConflict(inst::SATInstance, watcherfunc::Function)
     end
     return None()
 end
+function isSatisfied(inst :: SATInstance,watcherfunc :: Function)
+    for clause in inst.clauses
+        res = watcherfunc(clause)
+        if !(res isa Skip)
+            return false
+        end
+    end
+    return true
+end
 function _dpll(inst::SATInstance)
     # verify_inst(inst)
     watcherfunc = checkWatchers(inst)
@@ -300,11 +310,15 @@ function _dpll(inst::SATInstance)
         #BCP
         dpp+=1
         # println("at ",dpp," vr is ",vr)
+        inst.assigCount+=1
         newStackCall(inst)
         start = Base.Libc.time()
         res = propUnitLiterals(inst, watcherfunc,-vr,dpp)
         fin = Base.Libc.time()
         proptime += (fin - start)
+        if inst.assigCount > 5 && isSatisfied(inst,watcherfunc)
+            return None()
+        end
         if res isa Bad
             unwindStack(inst)
             return res
@@ -331,7 +345,7 @@ function _dpll(inst::SATInstance)
         end
     end
     rs = dpll(0)
-    println("proptime is ", proptime)
+    println("proptime is ", proptime," dpp is ",dpp)
     return rs
 end
 
