@@ -31,13 +31,13 @@ end
     assigs = Dict([(1,Unset),(2,Negative),(3,Positive),(4,Positive),(5,Unset),(6,Unset)])
     inst.varAssignment = assigs
     cls = getClause([1,-2],Int8)
-    @test checkWatchers(inst)(cls) isa Skip
+    @test checkWatchers(inst)(cls) isa None
     cls2 = getClause([1,2,4],Int8)
     @test cls2.watchers == [1,2]
-    @test checkWatchers(inst)(cls2) isa Skip
+    @test checkWatchers(inst)(cls2) isa None
     @test issubset(Set(Int8[3]),Set(cls2.watchers))   #indices
     cls3 = getClause([2,-3,4],Int8)
-    @test checkWatchers(inst)(cls3) isa Skip
+    @test checkWatchers(inst)(cls3) isa None
     @test issubset(Set(Int8[3]),Set(cls3.watchers))
     cls4 = getClause([2,-3,-4],Int8)
     @test checkWatchers(inst)(cls4) isa Bad
@@ -51,25 +51,25 @@ end
     @test checkWatchers(inst)(cls8) isa None
     @test issubset(Set(Int8[1,2]),Set(cls8.watchers))
 end
-@testset "propUnitLiterals" begin
-    inst =  read_cnf("test_inst/test0.cnf")
-    watcherfunc = checkWatchers(inst)
-    propUnitLiterals(inst,watcherfunc)
-    @test true
-    inst = read_cnf("test_inst/test1.cnf")
-    watcherfunc = checkWatchers(inst)
-    propUnitLiterals(inst,watcherfunc)
-    @test inst.varAssignment[1] == Unset && inst.varAssignment[2] == Unset && inst.varAssignment[3] == Unset
-    inst = read_cnf("test_inst/test2.cnf")
-    watcherfunc = checkWatchers(inst)
-    propUnitLiterals(inst,watcherfunc)
-    @test inst.varAssignment == Dict([(1,Positive),(2,Unset),(3,Negative),(4,Positive)])
-    inst = read_cnf("test_inst/test3.cnf")
-    watcherfunc = checkWatchers(inst)
-    res = propUnitLiterals(inst,watcherfunc)
-    @test res == Bad()
+# @testset "propUnitLiterals" begin
+#     inst =  read_cnf("test_inst/test0.cnf")
+#     watcherfunc = checkWatchers(inst)
+#     propUnitLiterals(inst,watcherfunc)
+#     @test true
+#     inst = read_cnf("test_inst/test1.cnf")
+#     watcherfunc = checkWatchers(inst)
+#     propUnitLiterals(inst,watcherfunc)
+#     @test inst.varAssignment[1] == Unset && inst.varAssignment[2] == Unset && inst.varAssignment[3] == Unset
+#     inst = read_cnf("test_inst/test2.cnf")
+#     watcherfunc = checkWatchers(inst)
+#     propUnitLiterals(inst,watcherfunc)
+#     @test inst.varAssignment == Dict([(1,Positive),(2,Unset),(3,Negative),(4,Positive)])
+#     inst = read_cnf("test_inst/test3.cnf")
+#     watcherfunc = checkWatchers(inst)
+#     res = propUnitLiterals(inst,watcherfunc)
+#     @test res == Bad()
 
-end
+# end
 
 @testset "setAssignment" begin
     inst = initializeInstance(6,4)
