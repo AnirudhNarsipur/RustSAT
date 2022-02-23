@@ -47,7 +47,7 @@ function assigStrRep(assig :: Dict)
         elseif v[2] == Negative
             strres[v[1]] = join([string(v[1])," false "])
         elseif v[2] == Unset
-            println("v is ",v[1]," ",v[2])
+            # println("v is ",v[1]," ",v[2])
             strres[v[1]] = join([string(v[1])," true "])
         else
             error("cant even")

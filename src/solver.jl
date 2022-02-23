@@ -132,6 +132,9 @@ function checkWatchers(inst::SATInstance) where {T}
 end
 
 function assignLiteral(inst::SATInstance, lit::Number)
+    if abs(lit) in [642,129,732]
+        println("assigning the lit ",lit)
+    end
     res = setAssignment(inst, lit)
     if res isa Bad
         return Bad
@@ -139,23 +142,64 @@ function assignLiteral(inst::SATInstance, lit::Number)
     return None
 end
 
-function propUnitLiterals(inst::SATInstance, watcherfunc::Function, vr::T) where {T<:Integer}
+function propUnitLiteralsFull(inst::SATInstance, watcherfunc::Function,vr,dp)
+    cont = true
+    while cont
+        cont = false
+        for cindex =1:inst.numClauses
+            clause = inst.clauses[cindex]
+            res = watcherfunc(clause)
+            if res isa None
+                continue
+            elseif res isa Bad
+                # print("Returning bad at cindex ",cindex," vr : ",vr, " clause : ")
+                # printClause(inst,cindex)
+                return Bad()
+            elseif res isa Some
+                # if dp == 2
+                #     println("assigning ",res.value," from index ",cindex)
+                # end
+                assignLiteral(inst, res.value)
+                cont = true
+                continue
+            else
+                error(join("should not be reached res was : ", res))
+            end
+        end
+    end
+    return None()
+end
+function printClause(inst :: SATInstance,c )
+    for lit in inst.clauses[c].literals
+        print("(",lit,", ",inst.varAssignment[(abs(lit))],") ")
+    end
+    println("")   
+end
+
+function propUnitLiterals(inst::SATInstance, watcherfunc::Function, vr::T,dp) where {T<:Integer}
     if vr == 0
         return None()
     end
     res::Option = aBad
-    # vw = getVarClauses(inst, vr)
     for cindex in getVarClauses(inst, vr)
-        clause = inst.clauses[cindex]
         res = watcherfunc(inst.clauses[cindex])
         if res isa Some
             assignLiteral(inst, res.value)
-            unitprop = propUnitLiterals(inst, watcherfunc, -res.value)
-            if unitprop isa Bad
-                return aBad
-            else
-                res = propUnitLiterals(inst, watcherfunc,res.value)
-            end
+            res = propUnitLiterals(inst, watcherfunc, -res.value,dp)
+        end
+        if res isa Bad
+            return aBad
+        elseif res isa Option
+            continue
+        else
+            error(join("should not be reached res was : ", res))
+        end
+    end
+    for cindex in getVarClauses(inst, -vr)
+        res = watcherfunc(inst.clauses[cindex])
+        if res isa Some
+            assignLiteral(inst, res.value)
+            res = propUnitLiterals(inst, watcherfunc, -res.value,dp)
         end
         if res isa Bad
             return aBad
@@ -263,14 +307,20 @@ function _dpll(inst::SATInstance)
     watcherfunc = checkWatchers(inst)
     pickVar = pickJSW(inst)
     pureLitfunc = pureLiteralElimination(inst)
-    propUnitLiterals(inst, watcherfunc, 0)
+    propUnitLiteralsFull(inst, watcherfunc,0,0)
     # pureLitfunc()
     proptime = 0
+    dpp = 0
     function dpll(vr::T) where {T<:Integer}
         #BCP
+        dpp+=1
+        println("at ",dpp," vr is ",vr)
         newStackCall(inst)
+        # if dpp > 2
+        #     return None()
+        # end
         start = Base.Libc.time()
-        res = propUnitLiterals(inst, watcherfunc, -vr)
+        res = propUnitLiteralsFull(inst, watcherfunc,-vr,dpp)
         fin = Base.Libc.time()
         proptime += (fin - start)
         if res isa Bad
@@ -322,3 +372,5 @@ end
 # end
 # end
 # calc_inst("small_inst/toy_solveable.cnf")
+# calc_inst("test_inst/test4.cnf")
+# @time calc_inst("input/C208_120.cnf")
