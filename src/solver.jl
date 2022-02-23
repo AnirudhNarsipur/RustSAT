@@ -1,4 +1,4 @@
-module MainModule
+# module MainModule
 include("./dimacparser.jl")
 __precompile__()
 #Checks the watchers of the clause and 
@@ -138,24 +138,6 @@ function assignLiteral(inst::SATInstance, lit::Number)
     end
     return None
 end
-function propUnitClause(inst::SATInstance, watcherfunc::Function, lit::T) where {T<:Integer}
-    res::Option = aBad
-    for cindex in getVarClauses(inst, lit)
-        clause = inst.clauses[cindex]
-        res = watcherfunc(inst.clauses[cindex])
-        if res isa Bad
-            return res
-        elseif res isa Some
-            assignLiteral(inst, res.value)
-            if propUnitClause(inst, watcherfunc, -res.value) isa Bad
-                return aBad
-            end
-        else
-            continue
-        end
-    end
-    return None()
-end
 
 function propUnitLiterals(inst::SATInstance, watcherfunc::Function, vr::T) where {T<:Integer}
     if vr == 0
@@ -167,20 +149,13 @@ function propUnitLiterals(inst::SATInstance, watcherfunc::Function, vr::T) where
         clause = inst.clauses[cindex]
         res = watcherfunc(inst.clauses[cindex])
         if res isa Some
-            # if !(cindex in vw)
-            #     print("Cindex is ", cindex, " res was ", res, " vr was ", vr, " but vw was ")
-            #     for i in vw
-            #         print(i, " ")
-            #     end
-            #     println(" ")
-            #     print("Clause was : ")
-            #     for i in clause.literals
-            #         print("(", i, ", ", inst.varAssignment[abs(i)], ") ", ", ")
-            #     end
-            #     println("")
-            # end
             assignLiteral(inst, res.value)
-            res = propUnitLiterals(inst, watcherfunc, -res.value)
+            unitprop = propUnitLiterals(inst, watcherfunc, -res.value)
+            if unitprop isa Bad
+                return aBad
+            else
+                res = propUnitLiterals(inst, watcherfunc,res.value)
+            end
         end
         if res isa Bad
             return aBad
@@ -342,8 +317,8 @@ function calc_inst(fl::String)
         error("why oh why", res)
     end
 end
-function __init__()
-    calc_inst(ARGS[1])
-end
-end
+# function __init__()
+#     calc_inst(ARGS[1])
+# end
+# end
 # calc_inst("small_inst/toy_solveable.cnf")
