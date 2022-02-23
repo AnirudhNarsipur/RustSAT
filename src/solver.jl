@@ -1,10 +1,10 @@
-# module MainModule
+module MainModule
 include("./dimacparser.jl")
 __precompile__()
 #Checks the watchers of the clause and 
 # returns literal if it exists
 #guarenteed not to have empty clauses
-
+const aBad = Bad()
 function literalInState(ls::Vector{AbstractAssignment}, st::AbstractAssignment)
     for elem in ls
         if elem == st
@@ -77,7 +77,7 @@ function checkWatchers(inst::SATInstance) where {T}
         if length(cls.watchers) == 0
             as = checkAssignment(assigs, cls.literals[1])
             if as == Satisfied
-                return Skip()
+                return None()
             elseif as == Conflict
                 return Bad()
             elseif as == Undecided
@@ -86,18 +86,10 @@ function checkWatchers(inst::SATInstance) where {T}
                 error("not reachable")
             end
         else
-            # @assert (length(cls.watchers) == 2)
-            # map!(x -> checkAssignment(assigs, cls.literals[x]), watcherst, cls.watchers)
-            cflct = false
-            for index in cls.watchers
-                watcherstloop = checkAssignment(assigs, cls.literals[index])
-                if watcherstloop == Satisfied
-                    return Skip()
-                elseif watcherstloop == Conflict
-                    cflct = true
-                end
-            end
-            if cflct
+            map!(x -> checkAssignment(assigs, cls.literals[x]), watcherst, cls.watchers)
+            if literalInState(watcherst, Satisfied)
+                return None()
+            elseif literalInState(watcherst, Conflict)
                 lnlit = length(cls.literals)
                 map!(x -> (x, checkAssignment(assigs, cls.literals[x])), literalsholder, 1:lnlit)
                 # literalsSt = map(x -> (x, checkAssignment(assigs, cls.literals[x])), 1:length(cls.literals))
@@ -119,10 +111,10 @@ function checkWatchers(inst::SATInstance) where {T}
                     end
                 end
                 if setsat != 1
-                    return Skip()
+                    return None()
                 else
                     if numUndec == 0
-                        return Bad()
+                        return aBad
                     elseif numUndec == 1
                         return Some(cls.literals[undecidedholder[1]])
                     else
@@ -146,34 +138,34 @@ function assignLiteral(inst::SATInstance, lit::Number)
     end
     return None
 end
-function propUnitClause(inst::SATInstance, watcherfunc::Function, cindex::Number)
-    res = watcherfunc(inst.clauses[cindex])
-    if res isa Some
-        assignLiteral(inst, res.value)
-        varClauses = getVarClauses(inst, -res.value)
-        if varClauses isa Bad
-            return None()
-        else
-            for val in varClauses.value
-                prop = propUnitClause(inst, watcherfunc, val)
-                if prop isa Bad
-                    return prop
-                end
+function propUnitClause(inst::SATInstance,watcherfunc :: Function,lit :: T) where T <: Integer
+    res :: Option = aBad
+    for cindex in getVarClauses(inst,lit)
+        res = watcherfunc(inst.clauses[cindex])
+        if res isa Bad
+            return res
+        elseif res isa Some
+            assignLiteral(inst,res.value)
+            if propUnitClause(inst,watcherfunc,res.value) isa Bad
+                return aBad
             end
-            return None()
+        else
+            continue
         end
-    elseif res isa Option
-        return res
-    else
-        error(join("should not be reached res was : ", res))
-    end
+    end 
+    return None()
 end
 
 function propUnitLiterals(inst::SATInstance, watcherfunc::Function)
+    res :: Option = aBad
     for cindex = 1:inst.numClauses
-        res = propUnitClause(inst, watcherfunc, cindex)
+        res = watcherfunc(inst.clauses[cindex])
+        if res isa Some
+            assignLiteral(inst,res.value)
+            res = propUnitClause(inst,watcherfunc,res.value)
+        end
         if res isa Bad
-            return res
+            return aBad
         elseif res isa Option
             continue
         else
@@ -182,6 +174,7 @@ function propUnitLiterals(inst::SATInstance, watcherfunc::Function)
     end
     return None()
 end
+
 function pickJSW(inst::SATInstance)
     jswraw = Vector{Float16}(undef, inst.numVars)
     fill!(jswraw, 0.0)
@@ -214,27 +207,6 @@ function pickJSW(inst::SATInstance)
         end
         return None()
     end
-end
-function propUnitLiteralsGood(inst::SATInstance, watcherfunc::Function)
-    cont = true
-    while cont
-        cont = false
-        for cindex in 1:inst.numClauses
-            res = watcherfunc(inst.clauses[cindex])
-            if res isa None || res isa Skip
-                continue
-            elseif res isa Bad
-                return Bad()
-            elseif res isa Some
-                assignLiteral(inst, res.value)
-                cont = true
-                continue
-            else
-                error(join("should not be reached res was : ", res))
-            end
-        end
-    end
-    return None()
 end
 
 function opposite(x::LiteralState)
@@ -298,17 +270,16 @@ function _dpll(inst::SATInstance)
     watcherfunc = checkWatchers(inst)
     pickVar = pickJSW(inst)
     pureLitfunc = pureLiteralElimination(inst)
-    propUnitLiteralsGood(inst, watcherfunc)
+    propUnitLiterals(inst, watcherfunc)
     pureLitfunc()
-    proptime = 0 
+    proptime = 0
     function dpll()
         #BCP
-        # println("dpll level ",prop)
         newStackCall(inst)
         start = Base.Libc.time()
-        res = propUnitLiteralsGood(inst, watcherfunc)
+        res = propUnitLiterals(inst, watcherfunc)
         fin = Base.Libc.time()
-        proptime+=(fin-start)
+        proptime += (fin - start)
         if res isa Bad
             unwindStack(inst)
             return res
@@ -335,7 +306,7 @@ function _dpll(inst::SATInstance)
         end
     end
     rs = dpll()
-    println("proptime is ",proptime)
+    println("proptime is ", proptime)
     return rs
 end
 
@@ -353,7 +324,7 @@ function calc_inst(fl::String)
         error("why oh why", res)
     end
 end
-# function __init__()
-#     calc_inst(ARGS[1])
-# end
-# end
+function __init__()
+    calc_inst(ARGS[1])
+end
+end

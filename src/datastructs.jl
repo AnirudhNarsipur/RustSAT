@@ -8,7 +8,6 @@ struct Some{T} <: Option
 end
 struct None <: Option end
 struct Bad <: Option end
-struct Skip <: Option end
 abstract type Satisfiability end
 struct SAT{T} <: Satisfiability
     assignment::Dict{T,LiteralState}
@@ -58,11 +57,7 @@ function popElem(dvec::DynamicVec{T}) where {T}
     end
 end
 function viewDvec(dvec :: DynamicVec{T}) where {T}
-    if dvec.top == 0
-        Bad()
-    else
-        return Some(view(dvec.vec,1:dvec.top))
-    end
+        return view(dvec.vec,1:dvec.top)
 end
 function pop2DElem(dvec :: DynamicVec{DynamicVec{T}}) where {T}
     if dvec.top == 0
