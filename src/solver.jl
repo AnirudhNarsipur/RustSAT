@@ -1,4 +1,4 @@
-# module MainModule
+module MainModule
 include("./dimacparser.jl")
 __precompile__()
 #Checks the watchers of the clause and 
@@ -132,9 +132,6 @@ function checkWatchers(inst::SATInstance) where {T}
 end
 
 function assignLiteral(inst::SATInstance, lit::Number)
-    if abs(lit) in [642,129,732]
-        println("assigning the lit ",lit)
-    end
     res = setAssignment(inst, lit)
     if res isa Bad
         return Bad
@@ -352,10 +349,10 @@ function calc_inst(fl::String)
         error("why oh why", res)
     end
 end
-# function __init__()
-#     calc_inst(ARGS[1])
-# end
-# end
+function __init__()
+    calc_inst(ARGS[1])
+end
+end
 # calc_inst("small_inst/toy_solveable.cnf")
 # calc_inst("test_inst/test4.cnf")
 # @time calc_inst("input/C208_120.cnf")
