@@ -34,6 +34,7 @@ mutable struct SATInstance{T,K}
     clauses::Vector{Clause{K}}
     decisionStack::DynamicVec{DynamicVec{T}}
     varClause :: Vector{Pair{DynamicVec{T},DynamicVec{T}}}
+    assigCount :: Int32
 end
 function initializeDynamicVec(tp::Type)
     DynamicVec{tp}(0, Vector{tp}(undef, 1))
@@ -94,7 +95,7 @@ function initializeInstance(vars::Number, clauses::Number)
     SATType = SATInstance{sattp...}
     assigs = map(x -> (abs(x), Unset), 1:vars)
     varClause = initializeVarClause(vars,sattp.first)
-    SATType(sattp.first, sattp.second, vars, clauses, Dict(assigs), clausevec,initializeDynamicVec(DynamicVec{sattp.first}),varClause)
+    SATType(sattp.first, sattp.second, vars, clauses, Dict(assigs), clausevec,initializeDynamicVec(DynamicVec{sattp.first}),varClause,0)
 end
 function getClause(literals, tp::Type)
     @assert !(0 in literals)
