@@ -137,14 +137,16 @@ function assignLiteral(inst::SATInstance, lit::Number)
     if res isa Bad
         return Bad
     end
+    inst.assigCount = 0
     return None
 end
 
-function propUnitLiteralsFull(inst::SATInstance, watcherfunc::Function,vr :: T) where T <: Integer
+
+function propUnitLiteralsFull(inst::SATInstance, watcherfunc::Function, vr, dp)
     cont = true
     while cont
         cont = false
-        for cindex =1:inst.numClauses
+        for cindex = 1:inst.numClauses
             clause = inst.clauses[cindex]
             res = watcherfunc(clause)
             if res isa None || res isa Skip
@@ -167,19 +169,19 @@ function propUnitLiteralsFull(inst::SATInstance, watcherfunc::Function,vr :: T) 
     end
     return None()
 end
-function printClause(inst :: SATInstance,c )
+function printClause(inst::SATInstance, c)
     for lit in inst.clauses[c].literals
-        print("(",lit,", ",inst.varAssignment[(abs(lit))],") ")
+        print("(", lit, ", ", inst.varAssignment[(abs(lit))], ") ")
     end
-    println("")   
+    println("")
 end
 
-function propUnitLiterals(inst::SATInstance, watcherfunc::Function, vr::T) where {T<:Integer}
+function propUnitLiterals(inst::SATInstance, watcherfunc::Function, vr::T, dp) where {T<:Integer}
     if vr == 0
         return None()
     end
     res::Option = aBad
-    for cindex in getVarClauses(inst,vr)
+    for cindex in getVarClauses(inst, vr)
         res = watcherfunc(inst.clauses[cindex])
         if res isa None || res isa Skip
             continue
@@ -187,7 +189,7 @@ function propUnitLiterals(inst::SATInstance, watcherfunc::Function, vr::T) where
             return Bad()
         elseif res isa Some
             assignLiteral(inst, res.value)
-            res = propUnitLiterals(inst,watcherfunc,-res.value)
+            res = propUnitLiterals(inst, watcherfunc, -res.value, dp)
             if res isa Bad
                 return Bad()
             end
@@ -197,7 +199,13 @@ function propUnitLiterals(inst::SATInstance, watcherfunc::Function, vr::T) where
     end
     return None()
 end
-
+function rand_sign()
+    if rand(1:2) == 1
+        Positive
+    else
+        Negative
+    end
+end
 function pickJSW(inst::SATInstance)
     jswraw = Vector{Float16}(undef, inst.numVars)
     fill!(jswraw, 0.0)
@@ -223,7 +231,7 @@ function pickJSW(inst::SATInstance)
     function internal()
         for (lit, val) in jswpair
             if inst.varAssignment[lit] == Unset
-                return Some((lit, Positive))
+                return Some((lit, rand_sign()))
             else
                 continue
             end
@@ -288,32 +296,56 @@ function checkConflict(inst::SATInstance, watcherfunc::Function)
     end
     return None()
 end
-function isSatisfied(inst :: SATInstance,watcherfunc :: Function)
+
+function isSatisified(inst::SATInstance)
     for clause in inst.clauses
-        res = watcherfunc(clause)
-        if !(res isa Skip)
+        for lit in clause.literals
+            if checkAssignment(inst.varAssignment,lit) == Satisfied
+                continue
+            end
             return false
         end
     end
     return true
 end
+
+function to_sign(l::LiteralState)
+    if l == Positive
+        return 1
+    elseif l == Negative
+        return -1
+    else
+        error("bad")
+    end
+end
+
 function _dpll(inst::SATInstance)
     # verify_inst(inst)
     watcherfunc = checkWatchers(inst)
     pickVar = pickJSW(inst)
     pureLitfunc = pureLiteralElimination(inst)
-    propUnitLiteralsFull(inst, watcherfunc,0)
+    propUnitLiteralsFull(inst, watcherfunc, 0, 0)
     # pureLitfunc()
     proptime = 0
-    # dpp = 0
+    dpp = 0
+    bd = 0
     function dpll(vr::T) where {T<:Integer}
         #BCP
-        # dpp+=1
+        dpp += 1
+        inst.assigCount += 1
         # println("at ",dpp," vr is ",vr)
-        inst.assigCount+=1
+        if inst.assigCount > 2
+            bd += 1
+            if isSatisified(inst)
+                return None()
+            else
+                pickVar = pickJSW(inst)
+                inst.assigCount = 0
+            end
+        end
         newStackCall(inst)
         start = Base.Libc.time()
-        res = propUnitLiterals(inst, watcherfunc,-vr)
+        res = propUnitLiterals(inst, watcherfunc, -vr, dpp)
         fin = Base.Libc.time()
         proptime += (fin - start)
         if inst.assigCount > 3 && isSatisfied(inst,watcherfunc)
@@ -328,6 +360,7 @@ function _dpll(inst::SATInstance)
                 return checkConflict(inst, watcherfunc)
             else
                 VTB = VTB.value
+
                 inst.varAssignment[VTB[1]] = Positive
                 res = dpll(VTB[1])
                 if res isa None
@@ -345,7 +378,7 @@ function _dpll(inst::SATInstance)
         end
     end
     rs = dpll(0)
-    # println("proptime is ", proptime," dpp is ",dpp)
+    println("proptime is ", proptime, " dpp is ", dpp, " bad runs are ", bd)
     return rs
 end
 

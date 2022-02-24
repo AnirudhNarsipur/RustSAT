@@ -35,7 +35,7 @@ mutable struct SATInstance{T,K}
     clauses::Vector{Clause{K}}
     decisionStack::DynamicVec{DynamicVec{T}}
     varClause :: Vector{Pair{DynamicVec{T},DynamicVec{T}}}
-    assigCount :: Int16
+    assigCount :: Int32
 end
 function initializeDynamicVec(tp::Type)
     DynamicVec{tp}(0, Vector{tp}(undef, 1))
