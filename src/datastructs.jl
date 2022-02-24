@@ -8,7 +8,6 @@ struct Some{T} <: Option
 end
 struct None <: Option end
 struct Bad <: Option end
-struct Skip <: Option end
 abstract type Satisfiability end
 struct SAT{T} <: Satisfiability
     assignment::Dict{T,LiteralState}
