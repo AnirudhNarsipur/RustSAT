@@ -1,4 +1,4 @@
-# module MainModule
+module MainModule
 include("./dimacparser.jl")
 __precompile__()
 #Checks the watchers of the clause and 
@@ -225,7 +225,7 @@ function pickJSW(inst::SATInstance)
         end
     end
     jswpair = [(index, val) for (index, val) in enumerate(jswraw)]
-    sort!(jswpair, by = x -> x[2], rev = true)
+    sort!(jswpair, by = x -> x[2], rev = true,alg=QuickSort)
     function internal()
         for (lit, val) in jswpair
             if inst.varAssignment[lit] == Unset
@@ -389,10 +389,10 @@ function calc_inst(fl::String)
         error("why oh why", res)
     end
 end
-# function __init__()
-#     calc_inst(ARGS[1])
-# end
-# end
+function __init__()
+    calc_inst(ARGS[1])
+end
+end
 # calc_inst("small_inst/toy_solveable.cnf")
 # calc_inst("test_inst/test4.cnf")
 # @time calc_inst("input/C208_120.cnf")
