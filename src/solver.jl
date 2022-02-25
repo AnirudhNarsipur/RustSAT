@@ -331,7 +331,7 @@ function _dpll(inst::SATInstance)
     proptime = 0
     function dpll(vr::T) where {T<:Integer}
         #BCP
-        
+        inst.assigCount += 1
         if inst.assigCount > 2
             res = pickJSW(inst,jswraw)
             if res isa None
@@ -341,7 +341,6 @@ function _dpll(inst::SATInstance)
                 inst.assigCount = 0
             end
         end
-        inst.assigCount += 1
         newStackCall(inst)
         start = Base.Libc.time()
         res = propUnitLiterals(inst, watcherfunc, -vr)
