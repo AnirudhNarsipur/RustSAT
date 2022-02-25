@@ -5,6 +5,7 @@ __precompile__()
 # returns literal if it exists
 #guarenteed not to have empty clauses
 const aBad = Bad()
+const aNone = None()
 function literalInState(ls::Vector{AbstractAssignment}, st::AbstractAssignment)
     for elem in ls
         if elem == st
@@ -55,12 +56,12 @@ end
 function setAssignment(inst::SATInstance, literal::Number)
     curr = checkAssignment(inst.varAssignment, literal)
     if curr == Satisfied
-        None()
+        aNone
     elseif curr == Conflict
-        Bad()
+        aBad
     elseif curr == Undecided
         updateStack(inst, literal)
-        return None()
+        return aNone
     else
         error("should not be reached")
     end
@@ -77,9 +78,9 @@ function checkWatchers(inst::SATInstance) where {T}
         if length(cls.watchers) == 0
             as = checkAssignment(assigs, cls.literals[1])
             if as == Satisfied
-                return None()
+                return aNone
             elseif as == Conflict
-                return Bad()
+                return aBad
             elseif as == Undecided
                 return Some(cls.literals[1])
             else
@@ -88,7 +89,7 @@ function checkWatchers(inst::SATInstance) where {T}
         else
             map!(x -> checkAssignment(assigs, cls.literals[x]), watcherst, cls.watchers)
             if literalInState(watcherst, Satisfied)
-                return None()
+                return aNone
             elseif literalInState(watcherst, Conflict)
                 lnlit = length(cls.literals)
                 map!(x -> (x, checkAssignment(assigs, cls.literals[x])), literalsholder, 1:lnlit)
@@ -111,7 +112,7 @@ function checkWatchers(inst::SATInstance) where {T}
                     end
                 end
                 if setsat != 1
-                    return None()
+                    return aNone
                 else
                     if numUndec == 0
                         return aBad
@@ -120,13 +121,13 @@ function checkWatchers(inst::SATInstance) where {T}
                     else
                         cls.watchers[1] = undecidedholder[1]
                         cls.watchers[2] = undecidedholder[2]
-                        return None()
+                        return aNone
                     end
                 end
             end
-            None()
+            aNone
         end
-        None()
+        aNone
     end
     return internal
 end
@@ -134,13 +135,13 @@ end
 function assignLiteral(inst::SATInstance, lit::Number)
     res = setAssignment(inst, lit)
     if res isa Bad
-        return Bad
+        return aBad
     end
     inst.assigCount = 0
-    return None
+    return aNone
 end
 
-function propUnitLiteralsFull(inst::SATInstance, watcherfunc::Function, vr, dp)
+function propUnitLiteralsFull(inst::SATInstance, watcherfunc::Function, vr)
     cont = true
     while cont
         cont = false
@@ -150,13 +151,8 @@ function propUnitLiteralsFull(inst::SATInstance, watcherfunc::Function, vr, dp)
             if res isa None
                 continue
             elseif res isa Bad
-                # print("Returning bad at cindex ",cindex," vr : ",vr, " clause : ")
-                # printClause(inst,cindex)
-                return Bad()
+                return aBad
             elseif res isa Some
-                # if dp == 2
-                #     println("assigning ",res.value," from index ",cindex)
-                # end
                 assignLiteral(inst, res.value)
                 cont = true
                 continue
@@ -165,7 +161,7 @@ function propUnitLiteralsFull(inst::SATInstance, watcherfunc::Function, vr, dp)
             end
         end
     end
-    return None()
+    return aNone
 end
 function printClause(inst::SATInstance, c)
     for lit in inst.clauses[c].literals
@@ -174,9 +170,9 @@ function printClause(inst::SATInstance, c)
     println("")
 end
 
-function propUnitLiterals(inst::SATInstance, watcherfunc::Function, vr::T, dp) where {T<:Integer}
+function propUnitLiterals(inst::SATInstance, watcherfunc::Function, vr::T) where {T<:Integer}
     if vr == 0
-        return None()
+        return aNone
     end
     res::Option = aBad
     for cindex in getVarClauses(inst, vr)
@@ -184,18 +180,18 @@ function propUnitLiterals(inst::SATInstance, watcherfunc::Function, vr::T, dp) w
         if res isa None
             continue
         elseif res isa Bad
-            return Bad()
+            return aBad
         elseif res isa Some
             assignLiteral(inst, res.value)
-            res = propUnitLiterals(inst, watcherfunc, -res.value, dp)
+            res = propUnitLiterals(inst, watcherfunc, -res.value)
             if res isa Bad
-                return Bad()
+                return res
             end
         else
             error(join("should not be reached res was : ", res))
         end
     end
-    return None()
+    return aNone
 end
 function rand_sign()
     if rand(1:2) == 1
@@ -204,37 +200,41 @@ function rand_sign()
         Negative
     end
 end
-function pickJSW(inst::SATInstance)
-    jswraw = Vector{Float16}(undef, inst.numVars)
-    fill!(jswraw, 0.0)
+function pickJSW(inst::SATInstance,jswraw :: Vector{Pair{Vector{T},Vector{Float16}}}) where T <: Integer
+    foreach(x -> jswraw[x][2][1] = 0.0,1:inst.numVars)
     clause_len = 0
-    t = 0
+    all_sat = true
     for clause in inst.clauses
-        clause_len = length(clause.literals)
-        is_sat = false
+        clause_sat = false
         for literal in clause.literals
             if checkAssignment(inst.varAssignment, literal) == Satisfied
-                is_sat = true
+                clause_sat = true
                 break
             end
         end
-        if !is_sat
+        if !clause_sat
+            all_sat = false
+            clause_len = length(clause.literals)
             for literal in clause.literals
-                jswraw[abs(literal)] += (2.0)^(-clause_len)
+                jswraw[abs(literal)][2][1] += (2.0)^(-clause_len)
             end
         end
     end
-    jswpair = [(index, val) for (index, val) in enumerate(jswraw)]
-    sort!(jswpair, by = x -> x[2], rev = true)
-    function internal()
-        for (lit, val) in jswpair
-            if inst.varAssignment[lit] == Unset
-                return Some((lit, rand_sign()))
-            else
-                continue
+    if all_sat
+        return aNone
+    else
+        sort!(jswraw, by = x -> x[2][1], rev = true, alg = QuickSort)
+        function internal()
+            for (lit, val) in jswraw
+                if inst.varAssignment[lit[1]] == Unset
+                    return Some((lit[1], rand_sign()))
+                else
+                    continue
+                end
             end
+            return aBad
         end
-        return None()
+        Some(internal)
     end
 end
 
@@ -289,15 +289,15 @@ function checkConflict(inst::SATInstance, watcherfunc::Function)
     for clause in inst.clauses
         res = watcherfunc(clause)
         if res isa Bad
-            return Bad()
+            return aBad
         end
     end
-    return None()
+    return aNone
 end
 function isSatisified(inst::SATInstance)
     for clause in inst.clauses
         for lit in clause.literals
-            if checkAssignment(inst.varAssignment,lit) == Satisfied
+            if checkAssignment(inst.varAssignment, lit) == Satisfied
                 continue
             end
             return false
@@ -316,31 +316,35 @@ function to_sign(l::LiteralState)
 end
 function _dpll(inst::SATInstance)
     # verify_inst(inst)
+    jswraw = Vector{Pair{Vector{inst.signedtp},Vector{Float16}}}(undef, inst.numVars)
+    foreach(x -> jswraw[x] = Pair([x],[0.0]),1:inst.numVars)
     watcherfunc = checkWatchers(inst)
-    pickVar = pickJSW(inst)
+    pickVar = pickJSW(inst,jswraw)
+    if pickVar isa None
+        return aNone
+    else
+        pickVar = pickVar.value
+    end
     pureLitfunc = pureLiteralElimination(inst)
-    propUnitLiteralsFull(inst, watcherfunc, 0, 0)
-    # pureLitfunc()
+    propUnitLiteralsFull(inst, watcherfunc, 0)
+    pureLitfunc()
     proptime = 0
-    dpp = 0
-    bd = 0
     function dpll(vr::T) where {T<:Integer}
         #BCP
-        dpp += 1
-        inst.assigCount += 1
-        # println("at ",dpp," vr is ",vr)
+        
         if inst.assigCount > 2
-            bd += 1
-            if isSatisified(inst)
-                return None()
+            res = pickJSW(inst,jswraw)
+            if res isa None
+                return aNone
             else
-                pickVar = pickJSW(inst)
+                pickVar = res.value
                 inst.assigCount = 0
             end
         end
+        inst.assigCount += 1
         newStackCall(inst)
         start = Base.Libc.time()
-        res = propUnitLiterals(inst, watcherfunc, -vr, dpp)
+        res = propUnitLiterals(inst, watcherfunc, -vr)
         fin = Base.Libc.time()
         proptime += (fin - start)
         if res isa Bad
@@ -348,7 +352,7 @@ function _dpll(inst::SATInstance)
             return res
         else
             VTB = pickVar()
-            if VTB isa None
+            if VTB isa Bad
                 return checkConflict(inst, watcherfunc)
             else
                 VTB = VTB.value
@@ -370,7 +374,7 @@ function _dpll(inst::SATInstance)
         end
     end
     rs = dpll(0)
-    println("proptime is ", proptime, " dpp is ", dpp, " bad runs are ", bd)
+    println("proptime is ", proptime)
     return rs
 end
 
@@ -395,3 +399,4 @@ end
 # calc_inst("small_inst/toy_solveable.cnf")
 # calc_inst("test_inst/test4.cnf")
 # @time calc_inst("input/C208_120.cnf")
+# calc_inst("small_inst/toy_solveable.cnf")

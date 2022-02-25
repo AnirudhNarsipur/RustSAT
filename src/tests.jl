@@ -31,13 +31,13 @@ end
     assigs = Dict([(1,Unset),(2,Negative),(3,Positive),(4,Positive),(5,Unset),(6,Unset)])
     inst.varAssignment = assigs
     cls = getClause([1,-2],Int8)
-    @test checkWatchers(inst)(cls) isa Skip
+    @test checkWatchers(inst)(cls) isa None
     cls2 = getClause([1,2,4],Int8)
     @test cls2.watchers == [1,2]
-    @test checkWatchers(inst)(cls2) isa Skip
+    @test checkWatchers(inst)(cls2) isa None
     @test issubset(Set(Int8[3]),Set(cls2.watchers))   #indices
     cls3 = getClause([2,-3,4],Int8)
-    @test checkWatchers(inst)(cls3) isa Skip
+    @test checkWatchers(inst)(cls3) isa None
     @test issubset(Set(Int8[3]),Set(cls3.watchers))
     cls4 = getClause([2,-3,-4],Int8)
     @test checkWatchers(inst)(cls4) isa Bad
