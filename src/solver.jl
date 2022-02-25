@@ -1,4 +1,4 @@
-module MainModule
+# module MainModule
 include("./dimacparser.jl")
 __precompile__()
 #Checks the watchers of the clause and 
@@ -329,7 +329,7 @@ function _dpll(inst::SATInstance)
         dpp += 1
         inst.assigCount += 1
         # println("at ",dpp," vr is ",vr)
-        if inst.assigCount > 1
+        if inst.assigCount > 2
             bd += 1
             if isSatisified(inst)
                 return None()
@@ -338,6 +338,7 @@ function _dpll(inst::SATInstance)
                 inst.assigCount = 0
             end
         end
+        
         newStackCall(inst)
         start = Base.Libc.time()
         res = propUnitLiterals(inst, watcherfunc, -vr, dpp)
@@ -388,10 +389,10 @@ function calc_inst(fl::String)
         error("why oh why", res)
     end
 end
-function __init__()
-    calc_inst(ARGS[1])
-end
-end
+# function __init__()
+#     calc_inst(ARGS[1])
+# end
+# end
 # calc_inst("small_inst/toy_solveable.cnf")
 # calc_inst("test_inst/test4.cnf")
 # @time calc_inst("input/C208_120.cnf")
