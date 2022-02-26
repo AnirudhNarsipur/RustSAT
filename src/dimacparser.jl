@@ -1,4 +1,5 @@
 include("datastructs.jl")
+# Read CNF
 function read_cnf(fl::String)
     try
         open(fl, "r") do io
@@ -39,6 +40,7 @@ function read_cnf(fl::String)
         error("Could not read CNF file")
     end
 end
+# Create string representation of assigments
 function assigStrRep(assig :: Dict)
     strres = Vector{String}(undef,length(assig))
     for v in assig
@@ -55,10 +57,11 @@ function assigStrRep(assig :: Dict)
     end
     return strres
 end
-
+# Output JSON
 function giveOutput(fl :: String,time ,result :: Satisfiability)
    kv_json = (k,v) -> join(['"',k,"""": """,'"',v,'"'])
    time = round(time,digits=2)
+   #UNSAT case
    if result isa UNSAT
     out = join([
         "{",
@@ -69,6 +72,7 @@ function giveOutput(fl :: String,time ,result :: Satisfiability)
     ])
    println(out)
    return nothing
+   #SAT case
    else
     strrep = strip(join(assigStrRep(result.assignment)))
     out = join([

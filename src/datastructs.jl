@@ -1,45 +1,70 @@
 # Marks whether a literal is satisified , in conflict or undecided
-
 @enum AbstractAssignment::Int8 Satisfied Conflict Undecided
+# Marks whether Variable is Positive , Negative , Unset  : Notice difference between variable and literal
 @enum LiteralState::Int8 Positive Negative Unset
+
+# Option type to convey values back and forth
 abstract type Option end
+# Return a value
 struct Some{T} <: Option
     value::T
 end
+# None - silent positive
 struct None <: Option end
+#Bad - failure
 struct Bad <: Option end
+# DPLL Result
 abstract type Satisfiability end
+# Variable -> Assignment if SAT
 struct SAT{T} <: Satisfiability
     assignment::Dict{T,LiteralState}
 end
+# Return UNSAT
 struct UNSAT <: Satisfiability end
+
+# Dynamic Array implementation
 mutable struct DynamicVec{T}
     top::UInt64
     vec::Vector{T}
 end
+
 # Holds a the literals of a clause and it's watchers (2 watchers)
 #watchers holds indices not literals
-
+# If Clause is unit then watchers are empty
 struct Clause{T}
     literals::Vector{T}
     watchers::Vector{T}
 end
+# Override equality for clauses
 Base.:(==)(x::Clause, y::Clause) = x.literals == y.literals && x.watchers == y.watchers
+# Stores all data for a SAT instance
+# Uses parametric types to reduce memory usage where possible
 mutable struct SATInstance{T,K}
+    # Unsigned Type for storing variables
     usignedtp::Type
+    # Signed type for literals
     signedtp::Type
+    # Number of variables
     numVars::T
+    # number of clauses
     numClauses::T
+    # Variable to Assigment mapping (Hash map)
     varAssignment::Dict{T,LiteralState}
+    #Array of clauses
     clauses::Vector{Clause{K}}
+    # Stack to keep track of assigments to undo in case of backtracking
     decisionStack::DynamicVec{DynamicVec{T}}
+    # Variables to clauses they occur in. Seperate dynamic array for positive and negative occurences
     varClause :: Vector{Pair{DynamicVec{T},DynamicVec{T}}}
+    # Counts number of calls since a unit prop
     assigCount :: Int32
 end
+
+#Initialize a dynamic array of type tp
 function initializeDynamicVec(tp::Type)
     DynamicVec{tp}(0, Vector{tp}(undef, 1))
-
 end
+# Push an element to a dynamic array
 function pushElem(dvec::DynamicVec{T}, elem::T) where {T}
     ln = length(dvec.vec)
     if dvec.top == ln
@@ -48,6 +73,7 @@ function pushElem(dvec::DynamicVec{T}, elem::T) where {T}
     dvec.vec[dvec.top+1] = elem
     dvec.top += 1
 end
+# Pop element from dynamic array
 function popElem(dvec::DynamicVec{T}) where {T}
     if dvec.top == 0
         Bad()
@@ -57,9 +83,14 @@ function popElem(dvec::DynamicVec{T}) where {T}
         return Some(tmp)
     end
 end
+# Array slices create a new array which we do not want!
+# Instead return a reference to a dynamic array
 function viewDvec(dvec :: DynamicVec{T}) where {T}
         return view(dvec.vec,1:dvec.top)
 end
+# Our actual Stack is a 2D Dynamic array where each element is an array of all decisions made at
+# a single level
+# Another function to deal with this
 function pop2DElem(dvec :: DynamicVec{DynamicVec{T}}) where {T}
     if dvec.top == 0
         return Bad()
@@ -73,6 +104,7 @@ function pop2DElem(dvec :: DynamicVec{DynamicVec{T}}) where {T}
         end         
     end 
 end
+# Push an element to 2D Dynamic Array
 function push2DElem(dvec :: DynamicVec{DynamicVec{T}},elem :: T) where {T}
     if dvec.top == 0
         pushElem(dvec,initializeDynamicVec(T))
@@ -80,6 +112,7 @@ function push2DElem(dvec :: DynamicVec{DynamicVec{T}},elem :: T) where {T}
     pushElem(dvec.vec[dvec.top],elem)
     return nothing
 end
+# Initialize a struct to hold mappings from variables to clauses
 function initializeVarClause(numVars :: Number,tp::Type)
     varClause = Vector{Pair{DynamicVec{tp},DynamicVec{tp}}}()
     resize!(varClause,numVars)
@@ -88,6 +121,7 @@ function initializeVarClause(numVars :: Number,tp::Type)
     end
     varClause
 end
+# Initialize a SAT instance 
 function initializeInstance(vars::Number, clauses::Number)
     sattp = getnumtype(clauses, vars)
     clausevec = Vector{Clause{sattp.second}}(undef, clauses)
@@ -97,6 +131,7 @@ function initializeInstance(vars::Number, clauses::Number)
     varClause = initializeVarClause(vars,sattp.first)
     SATType(sattp.first, sattp.second, vars, clauses, Dict(assigs), clausevec,initializeDynamicVec(DynamicVec{sattp.first}),varClause,0)
 end
+# Given a raw array of literals create a Clause struct
 function getClause(literals, tp::Type)
     @assert !(0 in literals)
     ltrslen = length(literals)
@@ -108,7 +143,8 @@ function getClause(literals, tp::Type)
         Clause{tp}(literals, [1, 2])
     end
 end
-# Given num of clauses and vars calculates approp num type
+# Given num of clauses and vars calculates appropriate num type
+# Choose to go with type of max(clauses,var)
 function getnumtype(clauses::Number, vars::Number)
     choose = clauses > vars ? clauses : vars
     tps = [Int8, Int16, Int32, Int64, Int128]
@@ -138,6 +174,8 @@ function updateVarClause(inst :: SATInstance,index :: Number)
         end
     end
 end
+
+# Get the clauses in which lit occurs
 function getVarClauses(inst :: SATInstance,lit :: T) where T <: Integer
     if sign(lit) == 1
         return viewDvec(inst.varClause[lit].first)
