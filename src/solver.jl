@@ -252,7 +252,7 @@ function pickJSW(inst::SATInstance,jswraw :: Vector{Tuple{Vector{T},Vector{Float
     function internal()
         for (lit, val) in jswpair
             if inst.varAssignment[lit] == Unset
-                return Some((lit, rand_sign()))
+                return Some(lit)
             else
                 continue
             end
@@ -384,18 +384,18 @@ function _dpll(inst::SATInstance)
             else
                 # Try one assignment first
                 VTB = VTB.value
-                inst.varAssignment[VTB[1]] = Positive
-                res = dpll(VTB[1])
+                inst.varAssignment[VTB] = Positive
+                res = dpll(VTB)
                 #SAT ! return
                 if res isa None
                     return res
                 else
                     # Try opposite assignment
-                    inst.varAssignment[VTB[1]] = Negative
-                    res = dpll(-VTB[1])
+                    inst.varAssignment[VTB] = Negative
+                    res = dpll(-VTB)
                     # UNSAT unwind stack and return
                     if res isa Bad
-                        inst.varAssignment[VTB[1]] = Unset
+                        inst.varAssignment[VTB] = Unset
                         unwindStack(inst)
                     end
                     return res

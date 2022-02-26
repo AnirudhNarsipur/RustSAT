@@ -61,6 +61,7 @@ end
 function giveOutput(fl :: String,time ,result :: Satisfiability)
    kv_json = (k,v) -> join(['"',k,"""": """,'"',v,'"'])
    time = round(time,digits=2)
+   fl = replace(fl,"input/" => "",".cnf" => "")
    #UNSAT case
    if result isa UNSAT
     out = join([
