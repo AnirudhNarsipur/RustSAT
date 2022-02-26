@@ -204,9 +204,11 @@ function rand_sign()
         Negative
     end
 end
-function pickJSW(inst::SATInstance)
-    jswraw = Vector{Float16}(undef, inst.numVars)
-    fill!(jswraw, 0.0)
+function pickJSW(inst::SATInstance,jswraw :: Vector{Tuple{Vector{T},Vector{Float16}}}) where T <: Integer
+    # jswraw = Vector{Float16}(undef, inst.numVars)
+    # fill!(jswraw, 0.0)
+    foreach(x -> jswraw[x][2][1] = 0.0,1:inst.numVars)
+  
     clause_len = 0
     t = 0
     for clause in inst.clauses
@@ -220,11 +222,11 @@ function pickJSW(inst::SATInstance)
         end
         if !is_sat
             for literal in clause.literals
-                jswraw[abs(literal)] += (2.0)^(-clause_len)
+                jswraw[abs(literal)][2][1] += (2.0)^(-clause_len)
             end
         end
     end
-    jswpair = [(index, val) for (index, val) in enumerate(jswraw)]
+    jswpair = [(index[1], val[1]) for (index, val) in jswraw]
     sort!(jswpair, by = x -> x[2], rev = true,alg=QuickSort)
     function internal()
         for (lit, val) in jswpair
@@ -317,7 +319,9 @@ end
 function _dpll(inst::SATInstance)
     # verify_inst(inst)
     watcherfunc = checkWatchers(inst)
-    pickVar = pickJSW(inst)
+    jswraw = Vector{Tuple{Vector{inst.signedtp},Vector{Float16}}}(undef, inst.numVars)
+    foreach(x -> jswraw[x] = ([x],[0.0]),1:inst.numVars)
+    pickVar = pickJSW(inst,jswraw)
     pureLitfunc = pureLiteralElimination(inst)
     propUnitLiteralsFull(inst, watcherfunc, 0, 0)
     # pureLitfunc()
@@ -334,7 +338,7 @@ function _dpll(inst::SATInstance)
             if isSatisified(inst)
                 return None()
             else
-                pickVar = pickJSW(inst)
+                pickVar = pickJSW(inst,jswraw)
                 inst.assigCount = 0
             end
         end
