@@ -1,6 +1,6 @@
 use crate::ds::*;
 use crate::parse::parse_cnf;
-
+use std::env;
 pub mod ds;
 pub mod parse;
 
@@ -14,6 +14,7 @@ fn solver(mut solver_state: SolverState) -> CNFStatus {
     let mut conflict_unit: Option<ConflictAnalysisResult> = None;
 
     while solver_state.assigments_len() < solver_state.num_variables {
+        println!("num clauses: {}", solver_state.clauses.len());
         let dec: Decision = {
             if let Some(ConflictAnalysisResult::Backtrack {
                 level: _,
@@ -38,31 +39,15 @@ fn solver(mut solver_state: SolverState) -> CNFStatus {
                     ConflictAnalysisResult::UNSAT => return CNFStatus::UNSAT,
                     ConflictAnalysisResult::Backtrack {
                         level,
-                        unit_lit: _,
-                        unit_idx: _,
+                        unit_lit,
+                        unit_idx,
                     } => {
-                        print!("Backtracking!");
-                        let nc = &solver_state.clauses[solver_state.clauses.len() - 1];
-                        let mut cnt = 0;
-                        for lit in nc.literals.iter() {
-                            if solver_state.assig.contains_key(&lit.var) {
-                                cnt += 1;
-                            }
+                        solver_state.backtrack_to_level(level);
+                        if unit_idx.is_none() {
+                            solver_state.add_preproc(&unit_lit);
+                        } else {
+                            conflict_unit = Some(conflict_res);
                         }
-                        println!("Before backtracking cnt: {} and lit count {}", cnt, nc.literals.len() );
-                        assert_eq!(cnt, nc.literals.len());
-                        solver_state.backtrack_to_level(level,&nc.literals.clone());
-                        conflict_unit = Some(conflict_res);
-
-                        let nc = &solver_state.clauses[solver_state.clauses.len() - 1];
-                        let mut cnt = 0;
-                        for lit in nc.literals.iter() {
-                            if solver_state.assig.contains_key(&lit.var) {
-                                cnt += 1;
-                            }
-                        }
-                        println!("Checking after");
-                        assert_eq!(cnt, nc.literals.len() - 1);
                         continue;
                     }
                 }
@@ -88,11 +73,10 @@ pub fn print_result(res: CNFStatus) {
     }
 }
 fn main() {
-    // let args: Vec<String> = env::args().collect();
-
-    // let formula_file = args[0].clone();
-    let formula_file = "../input/C1597_024.cnf";
-    let mut solver_state = parse_cnf(formula_file).unwrap();
+    let args: Vec<String> = env::args().collect();
+    let formula_file = args[1].clone();
+    // let formula_file = "../small_inst/toy_infeasible.cnf";
+    let mut solver_state = parse_cnf(&formula_file).unwrap();
     solver_state.preprocess();
     let res = solver(solver_state);
     print_result(res);

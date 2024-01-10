@@ -149,7 +149,7 @@ fn unit_prop_reassigned_test() {
 
     let result = clause.unit_prop(&assig, &Literal::from(-1));
     match result {
-        ClauseUnitProp::Reassigned{old_watch,new_watch} => assert!(clause.w1 == 2),
+        ClauseUnitProp::Reassigned{old_watch: _,new_watch: _} => assert!(clause.w1 == 2),
         _ => assert!(false, "Expected reassigned but got {:?}", result),
     }
 }
@@ -216,7 +216,7 @@ fn add_decision_test() {
     };
     let expected_assig = AssigInfo {
         litsign: lit.sign,
-        level: s.level,
+        level: 1,
     };
     s.add_unit_or_decision(&d);
     assert_eq!(s.decision_stack[0], d);

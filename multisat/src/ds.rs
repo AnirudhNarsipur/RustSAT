@@ -1,4 +1,7 @@
-use std::collections::{HashMap, HashSet, VecDeque};
+use std::{
+    collections::{HashMap, HashSet, VecDeque},
+    vec,
+};
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Copy)]
 pub struct Literal {
@@ -257,6 +260,7 @@ pub struct SolverState {
     watchlist: WatchList,
     pub num_variables: usize,
     pub clauses: Vec<Clause>,
+    pub var_order: Vec<Literal>,
 }
 impl SolverState {
     pub fn make_new(num_vars: usize) -> Self {
@@ -268,16 +272,42 @@ impl SolverState {
             watchlist: WatchList::empty(), //Initialize later
             num_variables: num_vars,
             clauses: Vec::new(),
+            var_order: Vec::new(),
         }
+    }
+
+    pub fn jsw(&self) -> Vec<Literal> {
+        let mut jsw_vec = vec![[0 as f32, 0 as f32]; (self.num_variables as usize) + 1];
+        for clause in self.clauses.iter() {
+            for lit in clause.literals.iter() {
+                let qnt = 2.0_f32.powf(-1.0 * (clause.literals.len() as f32));
+                if lit.is_negative() {
+                    jsw_vec[lit.var][0] += qnt;
+                } else {
+                    jsw_vec[lit.var][1] += qnt;
+                }
+            }
+        }
+        let mut res: Vec<(f32, Literal)> = Vec::new();
+        for (idx, arr) in jsw_vec.into_iter().enumerate() {
+            res.push((arr[0], Literal::from(-(idx as i32))));
+            res.push((arr[1], Literal::from(idx as i32)));
+        }
+        //reverse sort
+        res.sort_by(|a, b| (b.0).partial_cmp(&a.0).unwrap());
+        return res
+            .iter()
+            .filter_map(|&k| if k.1.var != 0 { Some(k.1) } else { None })
+            .collect();
     }
     pub fn decision_stack_size(&self) -> usize {
         self.decision_stack.len()
     }
 
     pub fn pick_var(&self) -> Literal {
-        for i in 1..=self.num_variables {
-            if !self.assig.contains_key(&i) {
-                return Literal { var: i, sign: true };
+        for i in self.var_order.iter() {
+            if !self.assig.contains_key(&i.var) {
+                return i.clone();
             }
         }
         panic!("unreachable!");
@@ -285,17 +315,8 @@ impl SolverState {
     pub fn add_unit_or_decision(&mut self, d: &Decision) {
         let lit = d.lit;
         assert!(!self.assig.contains_key(&lit.var));
-
-        match d.unit_prop_idx {
-            None => self.level += 1,
-            Some(_idx) => {
-                for lit in self.clauses[_idx].literals.iter() {
-                    if *lit != d.lit {
-                        assert!(self.assig.contains_key(&lit.var));
-                        assert!(literal_falsified(lit, &self.assig));
-                    }
-                }
-            }
+        if d.unit_prop_idx.is_none() {
+            self.level += 1;
         }
         self.assig.insert(
             lit.var,
@@ -317,46 +338,19 @@ impl SolverState {
             },
         );
     }
-    fn assigned_count_in_clause(&self,nc : &[Literal]) -> i32 {
-        let mut cnt = 0;
-        for lit in nc.iter() {
-            if self.assig.contains_key(&lit.var) {
-                cnt += 1;
-            }
-        }
-        cnt 
-    }
-    pub fn backtrack_to_level(&mut self, backtrack_level: usize, nc: &[Literal]) {
+    pub fn backtrack_to_level(&mut self, backtrack_level: usize) {
         assert!(backtrack_level < self.level);
-        println!("Starting backtrack assigned count is {} ",self.assigned_count_in_clause(nc));
-
-        //Current level only 1 lit 
-        let mut c = 0;
-        for lit in nc.iter() {
-            if self.get_lit_level(lit) == self.level {
-                c += 1;
-            }
-        }
-        assert_eq!(c,1);
 
         while self.level != backtrack_level {
-            let dec = self.pop_decision();
-            print!("Dec in clause: {:?} ",nc.iter().any(|lit| *lit == dec.lit));
-            println!("Popped 1 decision {:?} assigned count is {} ",dec.lit,self.assigned_count_in_clause(nc));
+            self.pop_decision();
         }
-        println!("Returning assigned count is {} ",self.assigned_count_in_clause(nc));
     }
 
     fn pop_decision(&mut self) -> Decision {
         match self.decision_stack.pop() {
             Some(dec) => {
-                assert_eq!(self.assig.get(&dec.lit.var).unwrap().level,self.level);
                 self.assig.remove(&dec.lit.var);
-                if let Decision {
-                    lit: _,
-                    unit_prop_idx: None,
-                } = dec
-                {
+                if dec.unit_prop_idx.is_none() {
                     self.level -= 1
                 }
                 dec
@@ -510,6 +504,7 @@ impl SolverState {
             oldsize = self.clauses.len();
         }
         self.setup_watchlist();
+        self.var_order = self.jsw();
     }
     fn get_lit_level(&self, lit: &Literal) -> usize {
         self.assig.get(&lit.var).unwrap().level
@@ -590,12 +585,6 @@ impl SolverState {
                             continue;
                         }
 
-                        assert!(self.assig.contains_key(&decided_lit.var));
-                        if !self.assig.contains_key(&decided_lit.var) {
-                            println!("Not in assig {:?} for idx {}", decided_lit, unit_idx);
-                            assert!(false);
-                        }
-
                         let resp_lit_level = self.get_lit_level(&decided_lit);
                         if resp_lit_level < self.level {
                             blamed_decs.insert(decided_lit);
@@ -625,17 +614,17 @@ impl SolverState {
             assert!(clauseset.len() == new_clause.literals.len());
             self.add_clause(new_clause);
 
-            return ConflictAnalysisResult::Backtrack {
+            ConflictAnalysisResult::Backtrack {
                 level: backtrack_level,
                 unit_lit: uip.invert(),
                 unit_idx: Some(self.clauses.len() - 1),
-            };
+            }
         } else {
-            return ConflictAnalysisResult::Backtrack {
+            ConflictAnalysisResult::Backtrack {
                 level: backtrack_level,
                 unit_lit: uip.invert(),
                 unit_idx: None,
-            };
+            }
         }
 
         //Find UIP
@@ -646,8 +635,9 @@ impl SolverState {
 
     pub fn get_model(&self) -> Vec<i32> {
         let mut v: Vec<i32> = Vec::new();
-        for dec in self.decision_stack.iter() {
-            v.push(dec.lit.var as i32 * if dec.lit.sign { 1 } else { -1 });
+        for var in 1..=self.num_variables {
+            let assigninfo = self.assig.get(&var).unwrap();
+            v.push( var as i32 * if assigninfo.litsign { 1 } else { -1 });
         }
         v
     }
