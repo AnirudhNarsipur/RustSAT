@@ -1,34 +1,49 @@
 pub mod utils;
+
 use std::{
     collections::{HashMap, HashSet, VecDeque},
     vec,
 };
 pub use utils::*;
 
+pub enum FormulaPreprocess {
+    TrivialUNSAT,
+    Ok,
+}
+
 #[derive(PartialEq, Debug)]
 pub struct SolverState {
     decision_stack: Vec<Decision>,
     pub assig: HashMap<LiteralSize, AssigInfo>,
-    level: usize,
+    pub level: usize,
     watchlist: WatchList,
     pub num_variables: usize,
     pub clauses: Vec<Clause>,
     pub var_order: Vec<Literal>,
 }
+
 impl SolverState {
-    pub fn make_new(num_vars: usize) -> Self {
+    fn make_new(num_vars: usize) -> Self {
         let dstack: Vec<Decision> = Vec::with_capacity(num_vars);
+
         Self {
             decision_stack: dstack,
             assig: HashMap::new(),
             level: 0,
-            watchlist: WatchList::empty(), //Initialize later
+            watchlist: WatchList::new(num_vars), //Initialize later
             num_variables: num_vars,
             clauses: Vec::new(),
             var_order: Vec::new(),
         }
     }
 
+    pub fn from_parsed_out(parsed_out: ParsedOut) -> Self {
+        let mut solver_state = Self::make_new(parsed_out.num_variables);
+        for clause in parsed_out.clauses {
+            solver_state.add_raw_clause(clause);
+        }
+        solver_state
+    }
     pub fn jsw(&self) -> Vec<Literal> {
         let mut jsw_vec = vec![[0 as f32, 0 as f32]; self.num_variables + 1];
         for clause in self.clauses.iter() {
@@ -65,34 +80,39 @@ impl SolverState {
         }
         panic!("unreachable!");
     }
-    pub fn add_unit_or_decision(&mut self, d: &Decision) {
-        let lit = d.lit;
-        assert!(!self.assig.contains_key(&lit.var));
-        if d.unit_prop_idx.is_none() {
-            self.level += 1;
+    pub fn add_decision(&mut self, d: &Decision) -> () {
+        assert!(!literal_falsified(&d.get_lit(), &self.assig));
+
+        match d {
+            Decision::AssertUnit { lit } => {
+                // println!("Adding decision {:?} lvl: {}", d, 0);
+                self.assig.insert(lit.var, AssigInfo::new(lit.sign, 0));
+            }
+            Decision::Choice { lit } => {
+                self.level += 1;
+                // println!("Adding decision {:?} lvl: {}", d, self.level);
+
+                self.assig
+                    .insert(lit.var, AssigInfo::new(lit.sign, self.level));
+                self.decision_stack.push(d.clone());
+            }
+            Decision::UnitProp { lit, unit_prop_idx } => {
+                assert!(*unit_prop_idx < self.clauses.len());
+                // println!("Adding decision {:?} lvl: {}", d, self.level);
+
+                self.assig
+                    .insert(lit.var, AssigInfo::new(lit.sign, self.level));
+                if self.level != 0 {
+                    self.decision_stack.push(d.clone());
+                }
+            }
         }
-        self.assig.insert(
-            lit.var,
-            AssigInfo {
-                litsign: lit.sign,
-                level: self.level,
-            },
-        );
-        self.decision_stack.push(d.clone());
     }
-    pub fn add_preproc(&mut self, lit: &Literal) -> bool {
-        if literal_falsified(lit, &self.assig) {
-            return false;
-        }
-        self.assig.insert(
-            lit.var,
-            AssigInfo {
-                litsign: lit.sign,
-                level: 0,
-            },
-        );
-        true
+    pub fn add_decision_prop(&mut self, d: &Decision) -> FormulaUnitProp {
+        self.add_decision(d);
+        return self.unit_prop(d);
     }
+
     pub fn backtrack_to_level(&mut self, backtrack_level: usize) {
         assert!(backtrack_level < self.level);
 
@@ -102,43 +122,77 @@ impl SolverState {
     }
 
     fn pop_decision(&mut self) -> Decision {
-        match self.decision_stack.pop() {
+        return match self.decision_stack.pop() {
             Some(dec) => {
-                self.assig.remove(&dec.lit.var);
-                if dec.unit_prop_idx.is_none() {
-                    self.level -= 1
+                println!("Popping decision {:?} lvl: {}", dec, self.level);
+                match dec {
+                    Decision::AssertUnit { .. } => unreachable!(),
+                    Decision::Choice { lit } => {
+                        self.level -= 1;
+                        self.assig.remove(&lit.var);
+                        dec
+                    }
+                    Decision::UnitProp { lit, .. } => {
+                        self.assig.remove(&lit.var);
+                        dec
+                    }
                 }
-                dec
             }
-            None => unreachable!("nothing to remove!"),
-        }
+            None => unreachable!(),
+        };
     }
-    pub fn add_clause(&mut self, clause: Clause) {
+    pub fn add_clause(&mut self, mut clause: Clause) {
         let clauseset = clause
             .literals
             .iter()
             .map(|lit| lit.var)
             .collect::<HashSet<LiteralSize>>();
         assert!(clauseset.len() == clause.literals.len());
-        //We have to add watchlist later
+        clause.set_unassigned_watches(&self.assig);
+        self.watchlist
+            .add_to_list(&clause.literals[clause.w1], self.clauses.len());
+        self.watchlist
+            .add_to_list(&clause.literals[clause.w2], self.clauses.len());
         self.clauses.push(clause);
     }
-    pub fn add_raw_clause(&mut self, raw_clause: Vec<&str>) -> bool {
-        let mut clause_ints: Vec<i32> = raw_clause
-            .into_iter()
-            .map(|lit_str| lit_str.parse::<i32>().unwrap())
-            .take_while(|&n| n != 0)
-            .collect();
-        let mut set = HashSet::new();
-        clause_ints.retain(|e| set.insert(*e));
+    pub fn add_conflict_clause(&mut self, mut clause: Clause, uip: Literal) {
+        let clauseset = clause
+            .literals
+            .iter()
+            .map(|lit| lit.var)
+            .collect::<HashSet<LiteralSize>>();
+        assert!(clauseset.len() == clause.literals.len());
+        let res = print_clause_lit_assigs(&clause, &self.assig);
+        // println!("Cur level: {} {}", self.level, res);
+        clause.w1 = clause
+            .literals
+            .iter()
+            .position(|&lit| {
+                self.assig
+                    .get(&lit.var)
+                    .is_some_and(|x| x.level == self.level)
+            })
+            .unwrap();
+        clause.w2 = clause.literals.iter().position(|&lit| lit == uip).unwrap();
+        assert!(clause.literals[clause.w2] == uip);
 
-        if clause_ints.len() == 1 {
-            let unit: Literal = Literal::from(clause_ints[0]);
-            if !self.add_preproc(&unit) {
-                return false;
-            }
+        self.watchlist
+            .add_to_list(&clause.literals[clause.w1], self.clauses.len());
+        self.watchlist
+            .add_to_list(&clause.literals[clause.w2], self.clauses.len());
+
+        self.clauses.push(clause);
+    }
+    pub fn add_raw_clause(&mut self, mut raw_clause: Vec<Literal>) -> bool {
+        let mut set = HashSet::new();
+        raw_clause.retain(|e| set.insert(*e));
+
+        if raw_clause.len() == 1 {
+            let unit: Literal = Literal::from(raw_clause[0]);
+            let d = Decision::make_assertunit(unit);
+            self.add_decision(&d);
         } else {
-            let clause = Clause::try_from(clause_ints).unwrap();
+            let clause = Clause::try_from(raw_clause).unwrap();
             self.add_clause(clause);
         }
         true
@@ -147,6 +201,62 @@ impl SolverState {
         self.clauses.len()
     }
 
+    pub fn unit_prop(&mut self, blame: &Decision) -> FormulaUnitProp {
+        let mut units_queue = VecDeque::from([blame.clone()]);
+        // maintain a seperate set from the assignments because we want the chronology to be correct -
+        // all parents lits in the implication graph should precede the given lit without ^ that would break
+
+        let mut seen_new_units: HashSet<Literal> = HashSet::from([blame.get_lit()]);
+        let mut add_unit: bool = false;
+        while !units_queue.is_empty() {
+            let d = units_queue.pop_front().unwrap();
+            let unit = d.get_lit();
+            let unit_inverted = unit.invert();
+
+            if add_unit {
+                self.add_decision(&d);
+            }
+            assert!(literal_satisfied(&unit, &self.assig));
+            for &clause_idx in self.watchlist.get_lit(&unit_inverted).clone().iter() {
+                let clause = self.clauses.get_mut(clause_idx).unwrap();
+                assert!(literal_falsified(&unit_inverted, &self.assig));
+
+                match clause.unit_prop(&self.assig, &unit_inverted) {
+                    ClauseUnitProp::Reassigned {
+                        old_watch,
+                        new_watch,
+                    } => {
+                        assert!(clause.literals.iter().find(|&x| *x == new_watch).is_some());
+                        self.watchlist.move_watch(old_watch, new_watch, clause_idx);
+                    }
+                    ClauseUnitProp::Satisfied => continue,
+                    ClauseUnitProp::Unit { lit } => {
+                        if seen_new_units.contains(&lit) || self.assig.contains_key(&lit.var) {
+                            continue;
+                        }
+                        units_queue.push_back(Decision::make_unitprop(lit, clause_idx));
+                        seen_new_units.insert(lit);
+                    }
+                    ClauseUnitProp::Conflict => {
+                        return FormulaUnitProp::Conflict {
+                            conflict_cause_idx: clause_idx,
+                        };
+                    }
+                }
+            }
+            //After the first add all the rest
+            add_unit = true;
+        }
+        FormulaUnitProp::Ok
+    }
+    pub fn reset_watchlist(&mut self) {
+        self.watchlist.clear();
+        for (idx, clause) in self.clauses.iter_mut().enumerate() {
+            clause.set_unassigned_watches(&self.assig);
+            self.watchlist.add_to_list(&clause.literals[clause.w1], idx);
+            self.watchlist.add_to_list(&clause.literals[clause.w2], idx);
+        }
+    }
     fn pure_literal_elimination(&mut self) {
         let mut pure_var_tracker: HashMap<LiteralSize, [bool; 2]> = HashMap::new();
         for var in 1..=self.num_variables {
@@ -163,106 +273,70 @@ impl SolverState {
             }
         }
         //Filter them
-        let pure_vars: HashSet<LiteralSize> = pure_var_tracker
+        let pure_lits: HashSet<Literal> = pure_var_tracker
             .iter()
             .filter(|(&_var, &arr)| arr[0] ^ arr[1])
-            .map(|(&var, &_arr)| var)
+            .map(|(&var, &_arr)| Literal {
+                var: var,
+                sign: pure_var_tracker[&var][1],
+            })
             .collect();
 
-        //Remove clause containg pure vars
-        self.clauses.retain(|clause| {
-            !clause
-                .literals
-                .iter()
-                .any(|lit| pure_vars.contains(&lit.var))
-        });
-
-        //assign them
-        for pure_var in pure_vars.iter() {
-            let sign = !pure_var_tracker.get(pure_var).unwrap()[0];
-            let lit = Literal {
-                var: *pure_var,
-                sign,
-            };
-            self.add_preproc(&lit);
-        }
-    }
-
-    pub fn unit_prop(&mut self, blame: &Decision) -> FormulaUnitProp {
-        let mut units_queue = VecDeque::from([blame.clone()]);
-        // maintain a seperate set from the assignments because we want the chronology to be correct -
-        // all parents lits in the implication graph should precede the given lit without ^ that would break
-
-        let mut seen_new_units: HashSet<Literal> = HashSet::from([blame.lit]);
-        let mut add_unit: bool = false;
-        while !units_queue.is_empty() {
-            let d = units_queue.pop_front().unwrap();
-            let unit = d.lit;
-            let unit_inverted = unit.invert();
-
-            if add_unit {
-                self.add_unit_or_decision(&d);
+        for &lit in pure_lits.iter() {
+            if literal_falsified(&lit, &self.assig) {
+                continue;
             }
+            let d = Decision::make_assertunit(lit);
+            self.add_decision(&d);
+        }
+    }
 
-            for &clause_idx in self.watchlist.get_lit(&unit_inverted).clone().iter() {
-                let clause = self.clauses.get_mut(clause_idx).unwrap();
-                match clause.unit_prop(&self.assig, &unit_inverted) {
-                    ClauseUnitProp::Reassigned {
-                        old_watch,
-                        new_watch,
-                    } => {
-                        self.watchlist.move_watch(old_watch, new_watch, clause_idx);
-                    }
-                    ClauseUnitProp::Satisfied => continue,
-                    ClauseUnitProp::Unit { lit } => {
-                        if seen_new_units.contains(&lit) || self.assig.contains_key(&lit.var) {
-                            continue;
-                        }
-                        units_queue.push_back(Decision {
-                            lit,
-                            unit_prop_idx: Some(clause_idx),
-                        });
-                        seen_new_units.insert(lit);
-                    }
-                    ClauseUnitProp::Conflict => {
-                        return FormulaUnitProp::Conflict {
-                            conflict_cause_idx: clause_idx,
-                        }
-                    }
-                }
+    pub fn preprocess(&mut self) -> FormulaPreprocess {
+        assert!(self.decision_stack.len() == 0);
+        let orig_len = self.clauses.len();
+        //Unit prop all the unit clauses and then remove them
+        let mut unit_vars: HashSet<Literal> = self
+            .assig
+            .keys()
+            .map(|&var| Literal {
+                var,
+                sign: self.assig.get(&var).unwrap().litsign,
+            })
+            .collect();
+
+        for &lit in unit_vars.iter() {
+            let unit = Decision::make_assertunit(lit);
+            assert!(literal_satisfied(&lit, &self.assig) || literal_unassigned(&lit, &self.assig));
+            if let FormulaUnitProp::Conflict { .. } = self.unit_prop(&unit) {
+                return FormulaPreprocess::TrivialUNSAT;
             }
-            //After the first add all the rest
-            add_unit = true;
         }
-        FormulaUnitProp::Ok
-    }
-    pub fn setup_watchlist(&mut self) {
-        self.watchlist = WatchList::new(self.num_variables);
-        for (idx, clause) in self.clauses.iter().enumerate() {
-            self.watchlist.add_to_list(&clause.literals[clause.w1], idx);
-            self.watchlist.add_to_list(&clause.literals[clause.w2], idx);
-        }
-    }
+        self.clauses
+            .retain(|clause| !clause.clause_satisfied(&self.assig));
 
-    pub fn preprocess(&mut self) {
-        //Remove clauses assigned from units
-        self.clauses.retain(|clause| {
-            !clause
-                .literals
-                .iter()
-                .any(|lit| self.assig.contains_key(&lit.var))
-        });
+        // self.pure_literal_elimination();
+        // let mut before_len = self.clauses.len();
+        // self.clauses
+        //     .retain(|clause| !clause.clause_satisfied(&self.assig));
+        // while self.clauses.len() != before_len {
+        //     self.pure_literal_elimination();
+        //     before_len = self.clauses.len();
+        //     self.clauses
+        //         .retain(|clause| !clause.clause_satisfied(&self.assig));
+        // }
 
-        //Pure lit elimination till saturation
-        assert!(self.level == 0);
-        let mut oldsize = self.clauses.len();
-        self.pure_literal_elimination();
-        while self.clauses.len() != oldsize {
-            self.pure_literal_elimination();
-            oldsize = self.clauses.len();
-        }
-        self.setup_watchlist();
         self.var_order = self.jsw();
+
+        self.reset_watchlist();
+        self.check_watch_invariant();
+
+        println!(
+            "Original : {} now : {} removed: {} ",
+            orig_len,
+            self.clauses.len(),
+            orig_len - self.clauses.len()
+        );
+        FormulaPreprocess::Ok
     }
     fn get_lit_level(&self, lit: &Literal) -> usize {
         self.assig.get(&lit.var).unwrap().level
@@ -295,43 +369,81 @@ impl SolverState {
             }
         }
         match second_highest {
-            None => highest.unwrap() - 1,
+            None => 0,
             Some(lvl) => lvl,
         }
     }
-    pub fn analyze_conflict(&mut self, conflict_idx: usize) -> ConflictAnalysisResult {
-        if self.level == 0 {
-            return ConflictAnalysisResult::UNSAT;
-        }
-        let conflict_clause = &self.clauses[conflict_idx];
+
+    fn check_new_clause(&self, new_clause: &Clause) {
+        let clauseset: HashSet<Literal> = HashSet::from_iter(new_clause.literals.clone());
+        assert!(clauseset.len() == new_clause.literals.len());
+        assert_eq!(
+            new_clause
+                .literals
+                .iter()
+                .filter(|lit| literal_falsified(lit, &self.assig))
+                .count(),
+            new_clause.literals.len() - 1
+        );
+        //Only 1 lit from current level
+        assert_eq!(
+            new_clause
+                .literals
+                .iter()
+                .filter(|lit| literal_unassigned(lit, &self.assig))
+                .count(),
+            1
+        );
+    }
+
+    fn create_conflict_clause(&self, clause_lits: Vec<Literal>) -> Clause {
+        let uip_idx = clause_lits.len() - 1;
+        let new_clause = Clause {
+            literals: clause_lits,
+            w1: 0,
+            w2: uip_idx,
+        };
+        self.check_new_clause(&new_clause);
+        new_clause
+    }
+    fn check_conflict_clause(&self, conflict_clause: &Clause) {
+        print_non_falsified_lits(&conflict_clause, &self.assig);
         assert!(conflict_clause
             .literals
             .iter()
             .all(|lit| literal_falsified(lit, &self.assig)));
+    }
+    pub fn analyze_conflict_backtrack(&mut self, conflict_idx: usize) -> ConflictAnalysisResult {
+        if self.level == 0 {
+            return ConflictAnalysisResult::UNSAT;
+        }
+        let conflict_clause = &self.clauses[conflict_idx];
+
+        self.check_conflict_clause(&conflict_clause);
 
         let blamed_decisions: Vec<Literal> = conflict_clause
             .literals
             .iter()
             .map(|lit| lit.invert())
             .collect();
+
         let (cur_level_decs, old_level_decs): (Vec<Literal>, Vec<Literal>) = blamed_decisions
             .into_iter()
             .partition(|lit| self.assig.get(&lit.var).unwrap().level == self.level);
 
+        assert!(cur_level_decs.len() >= 1);
         let mut blamed_decs: HashSet<Literal> = HashSet::from_iter(old_level_decs);
         let mut curset: HashSet<Literal> = HashSet::from_iter(cur_level_decs);
-
-        while curset.len() != 1 {
+        assert!(
+            curset.len() >= 1,
+            "{}",
+            print_clause_lit_assigs(&conflict_clause, &self.assig)
+        );
+        while curset.len() > 1 {
             match self.pop_decision() {
-                Decision {
-                    lit: _,
-                    unit_prop_idx: None,
-                } => {
-                    panic!("unreachable!");
-                }
-                Decision {
+                Decision::UnitProp {
                     lit,
-                    unit_prop_idx: Some(unit_idx),
+                    unit_prop_idx: unit_idx,
                 } => {
                     let lit_present = curset.remove(&lit);
                     if !lit_present {
@@ -351,6 +463,9 @@ impl SolverState {
                         }
                     }
                 }
+                d => {
+                    unreachable!("Got unexpected {:?} ", d);
+                }
             }
         }
         //curset now has the UIP
@@ -358,34 +473,18 @@ impl SolverState {
         blamed_decs.insert(uip);
 
         let clause_lits: Vec<Literal> = blamed_decs.into_iter().map(|lit| lit.invert()).collect();
-
         let backtrack_level = self.get_backtrack_level(&clause_lits);
-
-        if clause_lits.len() != 1 {
-            let uip_idx = clause_lits.len() - 1;
-            let new_clause = Clause {
-                literals: clause_lits,
-                w1: 0,
-                w2: uip_idx,
-            };
-            let clauseset: HashSet<Literal> = HashSet::from_iter(new_clause.literals.clone());
-            assert!(clauseset.len() == new_clause.literals.len());
-            self.add_clause(new_clause);
-
-            ConflictAnalysisResult::Backtrack {
-                level: backtrack_level,
-                unit_lit: uip.invert(),
-                unit_idx: Some(self.clauses.len() - 1),
-            }
+        self.backtrack_to_level(backtrack_level);
+        let d = if clause_lits.len() != 1 {
+            let new_clause = self.create_conflict_clause(clause_lits);
+            self.add_conflict_clause(new_clause, uip.invert());
+            Decision::make_unitprop(uip.invert(), self.clauses.len() - 1)
         } else {
-            ConflictAnalysisResult::Backtrack {
-                level: backtrack_level,
-                unit_lit: uip.invert(),
-                unit_idx: None,
-            }
-        }
-
-        //Find UIP
+            assert_eq!(self.level,0);
+            Decision::make_assertunit(uip.invert())
+        };
+        self.add_decision(&d);
+        ConflictAnalysisResult::Backtrack { decision: d }
     }
     pub fn assigments_len(&self) -> usize {
         self.assig.len()
@@ -401,12 +500,35 @@ impl SolverState {
     }
 
     pub fn check_watch_invariant(&self) {
-        for clause in self.clauses.iter() {
+        for (idx, clause) in self.clauses.iter().enumerate() {
+            assert!(idx < self.clauses.len());
+
             let l1 = clause.literals[clause.w1];
             let l2 = clause.literals[clause.w2];
-            assert!(!(literal_falsified(&l1, &self.assig) && literal_falsified(&l2, &self.assig)));
+
+            assert!(self.watchlist.watchlist[l1.var].has(idx));
+            assert!(self.watchlist.watchlist[l2.var].has(idx));
+            //both have to be unassigned or one of them has to be true
+            let invariant = (literal_unassigned(&l1, &self.assig)
+                && literal_unassigned(&l2, &self.assig))
+                || (literal_satisfied(&l1, &self.assig) || literal_satisfied(&l2, &self.assig));
+
+            if !invariant {
+                println!("Idx is {} ", idx);
+                println!(
+                    "Failed at idx {} lits: {:?} assigs are {}:{:?} , {}:{:?}",
+                    idx,
+                    clause.literals,
+                    l1,
+                    self.assig.get(&l1.var),
+                    l2,
+                    self.assig.get(&l2.var)
+                );
+                assert!(false);
+            }
         }
     }
 }
+
 #[cfg(test)]
 mod tests;

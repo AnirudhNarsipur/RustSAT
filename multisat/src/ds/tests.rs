@@ -218,7 +218,7 @@ fn add_decision_test() {
         litsign: lit.sign,
         level: 1,
     };
-    s.add_unit_or_decision(&d);
+    s.add_decision_prop(&d);
     assert_eq!(s.decision_stack[0], d);
     let actual_assig = s.assig.get(&lit.var);
     assert!(actual_assig.map_or(false, |&a| a == expected_assig));
@@ -237,7 +237,7 @@ fn add_unit_test() {
         litsign: lit.sign,
         level: s.level,
     };
-    s.add_unit_or_decision(&d);
+    s.add_decision_prop(&d);
     assert_eq!(s.decision_stack[0], d);
     let actual_assig = s.assig.get(&lit.var);
     assert!(actual_assig.map_or(false, |&a| a == expected_assig));
@@ -255,8 +255,8 @@ fn test_pop_decision() {
         lit: Literal::from(20),
         unit_prop_idx: Some(42),
     };
-    s.add_unit_or_decision(&d1);
-    s.add_unit_or_decision(&d2);
+    s.add_decision_prop(&d1);
+    s.add_decision_prop(&d2);
     assert!(s.level == 1);
     assert_eq!(s.pop_decision(), d2);
     assert!(s.level == 1);
@@ -311,10 +311,10 @@ fn test_formula_unit_prop_duplicate_units() {
     s.add_clause(c2);
     s.setup_watchlist();
     let d1 =  Decision::new(3, None);
-    s.add_unit_or_decision(&d1);
+    s.add_decision_prop(&d1);
     assert_eq!(s.unit_prop(&d1),FormulaUnitProp::Ok);
     let d2 = Decision::new(1,None);
-    s.add_unit_or_decision(&d2);
+    s.add_decision_prop(&d2);
     assert_eq!(s.unit_prop(&d2),FormulaUnitProp::Ok);
     // Assignments are now 1,-2,3
     assert_eq!(HashSet::from_iter(s.get_model()), HashSet::from([1,-2,3]));
@@ -332,7 +332,7 @@ fn test_watchlist_reassigned_correctly(){
     s.add_clause(c2);
     s.setup_watchlist();
     let d1 =  Decision::new(3, None);
-    s.add_unit_or_decision(&d1);
+    s.add_decision_prop(&d1);
 
     assert!(!s.watchlist.get(2).false_watch.contains(&(1)));
     assert!(s.watchlist.get(3).false_watch.contains(&(1)));
