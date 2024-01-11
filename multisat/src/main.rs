@@ -1,6 +1,7 @@
 use crate::ds::*;
-use crate::parse::parse_cnf;
+use crate::parse::*;
 use std::env;
+use std::process::exit;
 pub mod ds;
 pub mod parse;
 
@@ -44,7 +45,9 @@ fn solver(mut solver_state: SolverState) -> CNFStatus {
                     } => {
                         solver_state.backtrack_to_level(level);
                         if unit_idx.is_none() {
-                            solver_state.add_preproc(&unit_lit);
+                            if !solver_state.add_preproc(&unit_lit) {
+                                return CNFStatus::UNSAT;
+                            }
                         } else {
                             conflict_unit = Some(conflict_res);
                         }
@@ -74,9 +77,20 @@ pub fn print_result(res: CNFStatus) {
 }
 fn main() {
     let args: Vec<String> = env::args().collect();
-    let formula_file = args[1].clone();
-    // let formula_file = "../small_inst/toy_infeasible.cnf";
-    let mut solver_state = parse_cnf(&formula_file).unwrap();
+    // let formula_file = args[1].clone();
+    let formula_file = "../input/C168_128.cnf";
+    let mut solver_state = 
+    match parse_cnf(&formula_file) {
+        Ok(ParseOpt::SolverState(s)) => s,
+        Ok(ParseOpt::TrivialUNSAT) => {
+            print_result(CNFStatus::UNSAT);
+            exit(1);
+        }
+        Err(e) => {
+            println!("Error: {}", e);
+            exit(1);
+        }
+    };
     solver_state.preprocess();
     let res = solver(solver_state);
     print_result(res);

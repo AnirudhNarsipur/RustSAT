@@ -1,6 +1,8 @@
 use std::fs;
 use std::fs::File;
 use std::io::Write;
+use crate::parse::ParseOpt;
+
 use super::super::parse_cnf;
 
 // Helper function to create a test CNF file
@@ -19,7 +21,7 @@ fn test_successful_parsing() {
     let filename = "test_cnf_success.cnf";
     create_test_cnf_file("p cnf 3 2\nc comment line\n1 -2 0\n-3 1 0", filename);
 
-    let solver_state = parse_cnf(filename).unwrap();
+    let solver_state = parse_cnf(filename).unwrap().get_solver_state();
     cleanup_test_file(filename); // Clean up after test
 
     assert_eq!(solver_state.num_variables, 3);
@@ -64,10 +66,18 @@ fn test_parse_unit_clauses() {
     let filename = "test_cnf_unit_clauses.cnf";
     create_test_cnf_file("p cnf 3 2\n1 0\n-2 0", filename);
 
-    let solver_state = parse_cnf(filename).unwrap();
+    let solver_state = parse_cnf(filename).unwrap().get_solver_state();
     cleanup_test_file(filename); // Clean up after test
 
     assert_eq!(solver_state.num_variables, 3);
 }
 
 
+#[test]
+fn test_opposite_unit_clauses() { 
+    let filename = "test_cnf_opposite_unit_clauses.cnf";
+    create_test_cnf_file("p cnf 1 2\n1 0\n-1 0", filename);
+
+    assert_eq!(parse_cnf(filename).unwrap(),ParseOpt::TrivialUNSAT);
+    cleanup_test_file(filename); 
+}

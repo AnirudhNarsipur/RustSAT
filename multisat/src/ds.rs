@@ -170,7 +170,7 @@ type LiteralSize = usize;
 //     stack : Vec<Vec<Literal>>,
 // }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone,PartialEq)]
 struct VarWatch {
     false_watch: HashSet<usize>,
     true_watch: HashSet<usize>,
@@ -186,9 +186,10 @@ impl VarWatch {
         match lit.sign {
             true => self.true_watch.remove(&idx),
             false => self.false_watch.remove(&idx),
-        };
+        }; 
     }
 }
+#[derive(PartialEq,Debug)]
 struct WatchList {
     watchlist: Vec<VarWatch>,
 }
@@ -253,6 +254,7 @@ pub enum ConflictAnalysisResult {
         unit_idx: Option<usize>,
     },
 }
+#[derive(PartialEq,Debug)]
 pub struct SolverState {
     decision_stack: Vec<Decision>,
     pub assig: HashMap<LiteralSize, AssigInfo>,
@@ -327,16 +329,18 @@ impl SolverState {
         );
         self.decision_stack.push(d.clone());
     }
-    pub fn add_preproc(&mut self, lit: &Literal) {
-        assert!(!self.assig.contains_key(&lit.var));
-        assert!(self.level == 0);
+    pub fn add_preproc(&mut self, lit: &Literal) -> bool{
+        if literal_falsified(lit, &self.assig) {
+            return false;
+        }
         self.assig.insert(
             lit.var,
             AssigInfo {
                 litsign: lit.sign,
-                level: self.level,
+                level: 0,
             },
         );
+        return true;
     }
     pub fn backtrack_to_level(&mut self, backtrack_level: usize) {
         assert!(backtrack_level < self.level);
@@ -368,7 +372,7 @@ impl SolverState {
         //We have to add watchlist later
         self.clauses.push(clause);
     }
-    pub fn add_raw_clause(&mut self, raw_clause: Vec<&str>) {
+    pub fn add_raw_clause(&mut self, raw_clause: Vec<&str>) -> bool {
         let mut clause_ints: Vec<i32> = raw_clause
             .into_iter()
             .map(|lit_str| lit_str.parse::<i32>().unwrap())
@@ -379,11 +383,15 @@ impl SolverState {
 
         if clause_ints.len() == 1 {
             let unit: Literal = Literal::from(clause_ints[0]);
-            self.add_preproc(&unit);
+            if !self.add_preproc(&unit){
+                return false;
+            }
         } else {
             let clause = Clause::try_from(clause_ints).unwrap();
             self.add_clause(clause);
+            
         }
+        return  true;
     }
     pub fn num_clauses(&self) -> usize {
         self.clauses.len()
