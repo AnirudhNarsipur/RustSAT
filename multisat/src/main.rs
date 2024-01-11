@@ -2,6 +2,7 @@ use crate::ds::*;
 use crate::parse::*;
 use std::env;
 use std::process::exit;
+
 pub mod ds;
 pub mod parse;
 
@@ -11,11 +12,12 @@ pub enum CNFStatus {
     UNSAT,
 }
 
-fn solver(mut solver_state: SolverState) -> CNFStatus {
+fn solver(solver_state: &mut SolverState) -> CNFStatus {
     let mut conflict_unit: Option<ConflictAnalysisResult> = None;
 
     while solver_state.assigments_len() < solver_state.num_variables {
-        println!("num clauses: {}", solver_state.clauses.len());
+        solver_state.check_watch_invariant();
+        // println!("num clauses: {}", solver_state.clauses.len());
         let dec: Decision = {
             if let Some(ConflictAnalysisResult::Backtrack {
                 level: _,
@@ -67,7 +69,7 @@ pub fn print_result(res: CNFStatus) {
         CNFStatus::SAT { model } => {
             println!("s SATISFIABLE");
             print!("v ");
-            for lit in model.iter() {
+            for &lit in model.iter() {
                 print!("{} ", lit);
             }
             println!("0");
@@ -75,12 +77,31 @@ pub fn print_result(res: CNFStatus) {
         CNFStatus::UNSAT => println!("s UNSATISFIABLE"),
     }
 }
+pub fn check_result(solver_state: &SolverState, res: &CNFStatus) {
+    match res {
+        CNFStatus::SAT { model: _ } => {
+            for clause in solver_state.clauses.iter() {
+                
+                let  satisfied = clause.literals.iter().any(|&lit| literal_satisfied(&lit, &solver_state.assig));
+               
+                if !satisfied {
+                    let mut corresponding_assig : Vec<Literal> = Vec::new();
+                    for &lit in clause.literals.iter() {
+                        corresponding_assig.push(Literal { var: lit.var, sign: solver_state.assig.get(&lit.var).unwrap().litsign });
+                    }
+                    println!("Error: clause {:?} not satisfied corrsp assig {:?}", clause,corresponding_assig);
+                    exit(1);
+                }
+            }
+        }
+       _ => {},
+    }
+}
 fn main() {
     let args: Vec<String> = env::args().collect();
-    // let formula_file = args[1].clone();
-    let formula_file = "../input/C168_128.cnf";
-    let mut solver_state = 
-    match parse_cnf(&formula_file) {
+    let formula_file = args[1].clone();
+    // let formula_file = "../input/C168_128.cnf";
+    let mut solver_state = match parse_cnf(&formula_file) {
         Ok(ParseOpt::SolverState(s)) => s,
         Ok(ParseOpt::TrivialUNSAT) => {
             print_result(CNFStatus::UNSAT);
@@ -92,6 +113,8 @@ fn main() {
         }
     };
     solver_state.preprocess();
-    let res = solver(solver_state);
+    let res = solver(&mut solver_state);
+    println!("Got result");
+    check_result(&solver_state,&res);
     print_result(res);
 }
