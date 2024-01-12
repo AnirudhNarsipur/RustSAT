@@ -5,7 +5,7 @@ use std::{
     vec,
 };
 pub use utils::*;
-
+pub mod heuristic;
 pub enum FormulaPreprocess {
     TrivialUNSAT,
     Ok,
