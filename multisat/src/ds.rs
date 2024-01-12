@@ -124,7 +124,7 @@ impl SolverState {
     fn pop_decision(&mut self) -> Decision {
         return match self.decision_stack.pop() {
             Some(dec) => {
-                println!("Popping decision {:?} lvl: {}", dec, self.level);
+                // println!("Popping decision {:?} lvl: {}", dec, self.level);
                 match dec {
                     Decision::AssertUnit { .. } => unreachable!(),
                     Decision::Choice { lit } => {
@@ -162,7 +162,7 @@ impl SolverState {
             .map(|lit| lit.var)
             .collect::<HashSet<LiteralSize>>();
         assert!(clauseset.len() == clause.literals.len());
-        let res = print_clause_lit_assigs(&clause, &self.assig);
+        // let res = print_clause_lit_assigs(&clause, &self.assig);
         // println!("Cur level: {} {}", self.level, res);
         clause.w1 = clause
             .literals
@@ -257,45 +257,13 @@ impl SolverState {
             self.watchlist.add_to_list(&clause.literals[clause.w2], idx);
         }
     }
-    fn pure_literal_elimination(&mut self) {
-        let mut pure_var_tracker: HashMap<LiteralSize, [bool; 2]> = HashMap::new();
-        for var in 1..=self.num_variables {
-            pure_var_tracker.insert(var, [false, false]);
-        }
-        //Get all the pure lits
-        for clause in self.clauses.iter() {
-            for lit in clause.literals.iter() {
-                if lit.is_negative() {
-                    pure_var_tracker.get_mut(&lit.var).unwrap()[0] = true;
-                } else {
-                    pure_var_tracker.get_mut(&lit.var).unwrap()[1] = true;
-                }
-            }
-        }
-        //Filter them
-        let pure_lits: HashSet<Literal> = pure_var_tracker
-            .iter()
-            .filter(|(&_var, &arr)| arr[0] ^ arr[1])
-            .map(|(&var, &_arr)| Literal {
-                var: var,
-                sign: pure_var_tracker[&var][1],
-            })
-            .collect();
-
-        for &lit in pure_lits.iter() {
-            if literal_falsified(&lit, &self.assig) {
-                continue;
-            }
-            let d = Decision::make_assertunit(lit);
-            self.add_decision(&d);
-        }
-    }
+ 
 
     pub fn preprocess(&mut self) -> FormulaPreprocess {
         assert!(self.decision_stack.len() == 0);
         let orig_len = self.clauses.len();
         //Unit prop all the unit clauses and then remove them
-        let mut unit_vars: HashSet<Literal> = self
+        let  unit_vars: HashSet<Literal> = self
             .assig
             .keys()
             .map(|&var| Literal {
@@ -313,17 +281,6 @@ impl SolverState {
         }
         self.clauses
             .retain(|clause| !clause.clause_satisfied(&self.assig));
-
-        // self.pure_literal_elimination();
-        // let mut before_len = self.clauses.len();
-        // self.clauses
-        //     .retain(|clause| !clause.clause_satisfied(&self.assig));
-        // while self.clauses.len() != before_len {
-        //     self.pure_literal_elimination();
-        //     before_len = self.clauses.len();
-        //     self.clauses
-        //         .retain(|clause| !clause.clause_satisfied(&self.assig));
-        // }
 
         self.var_order = self.jsw();
 
@@ -426,7 +383,6 @@ impl SolverState {
             .iter()
             .map(|lit| lit.invert())
             .collect();
-
         let (cur_level_decs, old_level_decs): (Vec<Literal>, Vec<Literal>) = blamed_decisions
             .into_iter()
             .partition(|lit| self.assig.get(&lit.var).unwrap().level == self.level);
@@ -439,6 +395,7 @@ impl SolverState {
             "{}",
             print_clause_lit_assigs(&conflict_clause, &self.assig)
         );
+        assert!(curset.iter().all(|lit| self.assig.get(&lit.var).unwrap().level == self.level));
         while curset.len() > 1 {
             match self.pop_decision() {
                 Decision::UnitProp {
@@ -456,14 +413,20 @@ impl SolverState {
                         }
 
                         let resp_lit_level = self.get_lit_level(&decided_lit);
-                        if resp_lit_level < self.level {
+                        
+                        if 0 < resp_lit_level && resp_lit_level < self.level {
                             blamed_decs.insert(decided_lit);
-                        } else {
+                        } else if resp_lit_level == self.level{
                             curset.insert(decided_lit);
                         }
                     }
                 }
                 d => {
+                    print!("Level is {} Curset has: ",self.level);
+                    for lit in curset.iter() {
+                        print!(" {} ",print_lit_assig(&lit, &self.assig));
+                    }
+                    println!();
                     unreachable!("Got unexpected {:?} ", d);
                 }
             }
@@ -499,7 +462,7 @@ impl SolverState {
         v
     }
 
-    pub fn check_watch_invariant(&self) {
+    pub fn check_watch_invariant(&self) -> bool {
         for (idx, clause) in self.clauses.iter().enumerate() {
             assert!(idx < self.clauses.len());
 
@@ -526,7 +489,9 @@ impl SolverState {
                 );
                 assert!(false);
             }
+
         }
+        return  true;
     }
 }
 

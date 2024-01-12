@@ -34,15 +34,22 @@ fn unit_prop_sat(solver_state: &mut SolverState, recent_dec: &Decision) -> bool 
 }
 
 fn solver(solver_state: &mut SolverState) -> CNFStatus {
-    println!("Have {} clauses", solver_state.clauses.len());
+    println!(
+        "Have {} vars {} clauses",
+        solver_state.num_variables,
+        solver_state.clauses.len()
+    );
     while solver_state.assigments_len() < solver_state.num_variables {
-        solver_state.check_watch_invariant();
+        debug_assert!(solver_state.check_watch_invariant());
         let recent_dec: Decision = Decision::make_choice(solver_state.pick_var());
-        println!(
-            "solver loop level {} num clauses: {}",
-            solver_state.level,
-            solver_state.clauses.len()
-        );
+
+        // println!("Have {} assigs", solver_state.assig.len());
+
+        // println!(
+        //     "solver loop level {} num clauses: {}",
+        //     solver_state.level,
+        //     solver_state.clauses.len()
+        // );
         solver_state.add_decision(&recent_dec);
         if !unit_prop_sat(solver_state, &recent_dec) {
             return CNFStatus::UNSAT;
@@ -108,8 +115,8 @@ pub fn check_result(solver_state: &SolverState, res: &CNFStatus) {
 }
 fn main() {
     let args: Vec<String> = env::args().collect();
-    // let formula_file = args[1].clone();
-    let formula_file = "../input/C168_128.cnf";
+    let formula_file = args[1].clone();
+    // let formula_file = "../input/C208_120.cnf";
 
     let parsed_out = match parse_cnf(&formula_file) {
         Ok(p) => p,
@@ -120,17 +127,16 @@ fn main() {
     };
     let mut solver_state = SolverState::from_parsed_out(parsed_out);
     match solver_state.preprocess() {
-        FormulaPreprocess::Ok => {},
+        FormulaPreprocess::Ok => {}
         FormulaPreprocess::TrivialUNSAT => {
             let res = CNFStatus::UNSAT;
             check_result(&solver_state, &res);
             print_result(res);
             return;
         }
-    } ;
+    };
     let res = solver(&mut solver_state);
     println!("Got result");
     check_result(&solver_state, &res);
     print_result(res);
-   
 }

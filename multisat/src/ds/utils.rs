@@ -126,6 +126,13 @@ pub fn check_single_unit(clause: &Clause, assig: &Assig, lit_idx: usize) {
     }
     assert!(unassigned_lit[0] == clause.literals[lit_idx]);
 }
+
+pub fn print_lit_assig(lit: &Literal, assig: &Assig) -> String {
+    match assig.get(&lit.var) {
+        Some(inf) => format!("Lit:{}:{},level:{}", lit.var, inf.litsign, inf.level),
+        None => format!("Lit:{}:None", lit),
+    }
+}
 pub fn print_clause_lit_assigs(clause: &Clause, assig: &Assig) -> String {
     let mut tmp = String::new();
     for lit in clause.literals.iter() {
@@ -150,13 +157,7 @@ pub fn print_non_falsified_lits(clause: &Clause, assig: &Assig) -> String {
     }
     tmpstr
 }
-fn print_lit_assig(lit: &Literal, assig: &Assig) -> String {
-    match assig.get(&lit.var) {
-        Some(inf) =>format!("Lit:{}:{},level:{}", lit.var, inf.litsign, inf.level) ,
-        None => format!("Lit:{}:None", lit),        
-    }
-    
-}
+
 
 fn check_all_falsified(clause: &Clause, assig: &Assig) {
     let tmp: Vec<Literal> = clause
