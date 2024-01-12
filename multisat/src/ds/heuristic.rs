@@ -1,41 +1,62 @@
-use std::{cmp::Ordering, collections::{ HashMap}};
+use std::{cmp::Ordering, collections:: HashMap};
 
 use crate::ds::utils::*;
-
-pub trait Heuristic {
-    fn new(num_vars : usize,clauses : Vec<Clause>) -> Self;
-
-    fn pick_var(&mut self,assig : &Assig) -> Literal;
-
-    fn add_clause(&mut self, clause : Clause);
-
-    fn delete_clause(&mut self, clause : Clause);
-    
+#[derive(PartialEq,Eq,Clone,Debug,PartialOrd, Ord)]
+struct Phase {
+    true_score : usize,
+    false_score : usize,
 }
-
-#[derive(PartialEq,Clone)]
+impl Phase {
+    pub fn bump(&mut self,lit: &Literal,bump : usize) {
+        if lit.is_negative() {
+            self.false_score += bump;
+        } else {
+            self.true_score += bump;
+        }
+    }
+    pub fn decrement(&mut self) {
+        self.true_score -= 1;
+        self.false_score -= 1;
+    }
+}
+impl Default for Phase {
+    fn default() -> Self {
+        Phase{true_score : 0,false_score : 0}
+    }
+}
+#[derive(PartialEq,Eq,Clone,Debug,PartialOrd)]
 struct ScoreVar {
-    score : usize,
+    phase : Phase,
     var : LiteralSize,
     stored_phase : Option<bool>
 }
 
-fn literal_from_score_var(var : &ScoreVar) -> Literal {
-    if var.stored_phase.is_some_and(|x| !x) {
-        Literal::from(-(var.var as i32))
-    } else {
-        Literal::from(var.var as i32)
-    
+fn literal_from_score_var(var : &mut ScoreVar) -> Literal {
+    match var.stored_phase {
+        Some(true) => Literal::from(var.var as i32),
+        Some(false) => Literal::from(-(var.var as i32)),
+        None => {
+            if var.phase.true_score > var.phase.false_score {
+                var.stored_phase = Some(true);
+                Literal::from(var.var as i32)
+            } else {
+                var.stored_phase = Some(false);
+                Literal::from(-(var.var as i32))
+            }
+
+        }
     }
 }
 
-impl PartialOrd for ScoreVar {
-    fn partial_cmp(&self, other: &ScoreVar) -> Option<Ordering> {
-        self.score.partial_cmp(&other.score)
+impl Ord for ScoreVar {
+    fn cmp(&self, other: &ScoreVar) -> Ordering {
+        self.phase.cmp(&other.phase)
     }
 }
-struct VSIDS {
-    variable_scores : HashMap<LiteralSize,usize>,
+
+#[derive(PartialEq,Debug)]
+pub struct VSIDS {
+    variable_scores : HashMap<LiteralSize,Phase>,
     var_order : Vec<ScoreVar>,
     nclause_counter : usize,
     decay_rate : usize,
@@ -44,35 +65,31 @@ struct VSIDS {
 }
 
 impl VSIDS {
-    fn sort_var_order(&mut self) {
+    pub fn sort_var_order(&mut self) {
         for var in self.var_order.iter_mut() {
-            var.score = *self.variable_scores.get(&var.var).unwrap();
+            let act_phase = self.variable_scores.get(&var.var).unwrap();
+            var.phase.true_score = act_phase.true_score;
+            var.phase.false_score = act_phase.false_score;
         }
         self.var_order.sort_by(|a,b| b.partial_cmp(a).unwrap());
     }
     fn decay(&mut self) {
         for score in self.variable_scores.values_mut() {
-            *score = *score >> 1;
+            score.true_score >>= 1;
+            score.false_score >>= 1;
         }
     }
-}
-impl Heuristic for VSIDS {
-    fn new(num_vars : usize,clauses : Vec<Clause>) -> Self {
+
+    pub fn new(num_vars : usize) -> Self {
         let mut var_ord  : Vec<ScoreVar> = Vec::with_capacity(num_vars);
-        let mut var_scores: HashMap<LiteralSize,usize> = HashMap::with_capacity(num_vars);
+        let mut var_scores: HashMap<LiteralSize,Phase> = HashMap::with_capacity(num_vars);
 
         for v in 1..=num_vars {
            
-            var_scores.insert(v ,0);
+            var_scores.insert(v ,Default::default());
         };
-        for clause in clauses.iter() {
-            for lit in clause.literals.iter() {
-                let  var = var_scores.get_mut(&lit.var).unwrap();
-                *var += 1;
-            }
-        }
         for v in 1..=num_vars {
-            let nvar =ScoreVar{score : 0,var : v as LiteralSize,stored_phase : None};
+            let nvar =ScoreVar{phase : Default::default(),var : v as LiteralSize,stored_phase : None};
             var_ord.push(nvar);
         }
         
@@ -82,8 +99,8 @@ impl Heuristic for VSIDS {
 
     }
 
-    fn pick_var(&mut self,assig : &Assig) -> Literal {
-        for var in self.var_order.iter() {
+    pub fn pick_var(&mut self,assig : &Assig) -> Literal {
+        for var in self.var_order.iter_mut() {
             if assig.get(&var.var).is_none() {
                 return literal_from_score_var(var);
             }
@@ -91,7 +108,7 @@ impl Heuristic for VSIDS {
         unreachable!("No unassigned variables left");
     }
 
-    fn add_clause(&mut self, clause : Clause) {
+    pub fn add_clause(&mut self, clause : &Clause) {
         self.nclause_counter += 1;
         if self.nclause_counter == self.decay_rate {
             self.nclause_counter = 0;
@@ -101,15 +118,41 @@ impl Heuristic for VSIDS {
         }
         for lit in clause.literals.iter() {
             let var = self.variable_scores.get_mut(&lit.var).unwrap();
-            *var += self.add_bump;
+            var.bump(&lit, self.add_bump);
+
         }
     }
 
-    fn delete_clause(&mut self, clause : Clause) {  
+    pub fn delete_clause(&mut self, clause : &Clause) {  
         for lit in clause.literals.iter() {
             let var = self.variable_scores.get_mut(&lit.var).unwrap();
-            *var -= self.add_bump;
+            var.decrement();
         }
        
     }
 }
+
+// pub fn jsw(&self) -> Vec<Literal> {
+//     let mut jsw_vec = vec![[0 as f32, 0 as f32]; self.num_variables + 1];
+//     for clause in self.clauses.iter() {
+//         for lit in clause.literals.iter() {
+//             let qnt = 2.0_f32.powf(-1.0 * (clause.literals.len() as f32));
+//             if lit.is_negative() {
+//                 jsw_vec[lit.var][0] += qnt;
+//             } else {
+//                 jsw_vec[lit.var][1] += qnt;
+//             }
+//         }
+//     }
+//     let mut res: Vec<(f32, Literal)> = Vec::new();
+//     for (idx, arr) in jsw_vec.into_iter().enumerate() {
+//         res.push((arr[0], Literal::from(-(idx as i32))));
+//         res.push((arr[1], Literal::from(idx as i32)));
+//     }
+//     //reverse sort
+//     res.sort_by(|a, b| (b.0).partial_cmp(&a.0).unwrap());
+//     return res
+//         .iter()
+//         .filter_map(|&k| if k.1.var != 0 { Some(k.1) } else { None })
+//         .collect();
+// }

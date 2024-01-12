@@ -1,11 +1,12 @@
 pub mod utils;
 
 use std::{
-    collections::{HashMap, HashSet, VecDeque},
-    vec,
+    collections::{HashMap, HashSet, VecDeque}
 };
 pub use utils::*;
 pub mod heuristic;
+
+use self::heuristic::VSIDS;
 pub enum FormulaPreprocess {
     TrivialUNSAT,
     Ok,
@@ -19,7 +20,8 @@ pub struct SolverState {
     watchlist: WatchList,
     pub num_variables: usize,
     pub clauses: Vec<Clause>,
-    pub var_order: Vec<Literal>,
+    decision_heuristic:VSIDS,
+
 }
 
 impl SolverState {
@@ -33,7 +35,7 @@ impl SolverState {
             watchlist: WatchList::new(num_vars), //Initialize later
             num_variables: num_vars,
             clauses: Vec::new(),
-            var_order: Vec::new(),
+            decision_heuristic: VSIDS::new(num_vars)
         }
     }
 
@@ -44,43 +46,15 @@ impl SolverState {
         }
         solver_state
     }
-    pub fn jsw(&self) -> Vec<Literal> {
-        let mut jsw_vec = vec![[0 as f32, 0 as f32]; self.num_variables + 1];
-        for clause in self.clauses.iter() {
-            for lit in clause.literals.iter() {
-                let qnt = 2.0_f32.powf(-1.0 * (clause.literals.len() as f32));
-                if lit.is_negative() {
-                    jsw_vec[lit.var][0] += qnt;
-                } else {
-                    jsw_vec[lit.var][1] += qnt;
-                }
-            }
-        }
-        let mut res: Vec<(f32, Literal)> = Vec::new();
-        for (idx, arr) in jsw_vec.into_iter().enumerate() {
-            res.push((arr[0], Literal::from(-(idx as i32))));
-            res.push((arr[1], Literal::from(idx as i32)));
-        }
-        //reverse sort
-        res.sort_by(|a, b| (b.0).partial_cmp(&a.0).unwrap());
-        return res
-            .iter()
-            .filter_map(|&k| if k.1.var != 0 { Some(k.1) } else { None })
-            .collect();
-    }
+
     pub fn decision_stack_size(&self) -> usize {
         self.decision_stack.len()
     }
 
-    pub fn pick_var(&self) -> Literal {
-        for i in self.var_order.iter() {
-            if !self.assig.contains_key(&i.var) {
-                return *i;
-            }
-        }
-        panic!("unreachable!");
+    pub fn pick_var(&mut self) -> Literal {
+        self.decision_heuristic.pick_var(&self.assig)
     }
-    pub fn add_decision(&mut self, d: &Decision) -> () {
+    pub fn add_decision(&mut self, d: &Decision) {
         assert!(!literal_falsified(&d.get_lit(), &self.assig));
 
         match d {
@@ -110,7 +84,7 @@ impl SolverState {
     }
     pub fn add_decision_prop(&mut self, d: &Decision) -> FormulaUnitProp {
         self.add_decision(d);
-        return self.unit_prop(d);
+        self.unit_prop(d)
     }
 
     pub fn backtrack_to_level(&mut self, backtrack_level: usize) {
@@ -122,7 +96,7 @@ impl SolverState {
     }
 
     fn pop_decision(&mut self) -> Decision {
-        return match self.decision_stack.pop() {
+        match self.decision_stack.pop() {
             Some(dec) => {
                 // println!("Popping decision {:?} lvl: {}", dec, self.level);
                 match dec {
@@ -139,7 +113,7 @@ impl SolverState {
                 }
             }
             None => unreachable!(),
-        };
+        }
     }
     pub fn add_clause(&mut self, mut clause: Clause) {
         let clauseset = clause
@@ -174,6 +148,7 @@ impl SolverState {
             })
             .unwrap();
         clause.w2 = clause.literals.iter().position(|&lit| lit == uip).unwrap();
+        self.decision_heuristic.add_clause(&clause);
         assert!(clause.literals[clause.w2] == uip);
 
         self.watchlist
@@ -188,7 +163,7 @@ impl SolverState {
         raw_clause.retain(|e| set.insert(*e));
 
         if raw_clause.len() == 1 {
-            let unit: Literal = Literal::from(raw_clause[0]);
+            let unit: Literal = raw_clause[0];
             let d = Decision::make_assertunit(unit);
             self.add_decision(&d);
         } else {
@@ -226,7 +201,7 @@ impl SolverState {
                         old_watch,
                         new_watch,
                     } => {
-                        assert!(clause.literals.iter().find(|&x| *x == new_watch).is_some());
+                        assert!(clause.literals.iter().any(|x| *x == new_watch));
                         self.watchlist.move_watch(old_watch, new_watch, clause_idx);
                     }
                     ClauseUnitProp::Satisfied => continue,
@@ -260,7 +235,7 @@ impl SolverState {
  
 
     pub fn preprocess(&mut self) -> FormulaPreprocess {
-        assert!(self.decision_stack.len() == 0);
+        assert!(self.decision_stack.is_empty());
         let orig_len = self.clauses.len();
         //Unit prop all the unit clauses and then remove them
         let  unit_vars: HashSet<Literal> = self
@@ -282,8 +257,10 @@ impl SolverState {
         self.clauses
             .retain(|clause| !clause.clause_satisfied(&self.assig));
 
-        self.var_order = self.jsw();
-
+        for clause in self.clauses.iter(){
+            self.decision_heuristic.add_clause(clause);
+        }
+        self.decision_heuristic.sort_var_order();
         self.reset_watchlist();
         self.check_watch_invariant();
 
@@ -325,10 +302,7 @@ impl SolverState {
                 _ => {}
             }
         }
-        match second_highest {
-            None => 0,
-            Some(lvl) => lvl,
-        }
+        second_highest.unwrap_or(0)
     }
 
     fn check_new_clause(&self, new_clause: &Clause) {
@@ -364,7 +338,7 @@ impl SolverState {
         new_clause
     }
     fn check_conflict_clause(&self, conflict_clause: &Clause) {
-        print_non_falsified_lits(&conflict_clause, &self.assig);
+        print_non_falsified_lits(conflict_clause, &self.assig);
         assert!(conflict_clause
             .literals
             .iter()
@@ -376,7 +350,7 @@ impl SolverState {
         }
         let conflict_clause = &self.clauses[conflict_idx];
 
-        self.check_conflict_clause(&conflict_clause);
+        self.check_conflict_clause(conflict_clause);
 
         let blamed_decisions: Vec<Literal> = conflict_clause
             .literals
@@ -387,13 +361,13 @@ impl SolverState {
             .into_iter()
             .partition(|lit| self.assig.get(&lit.var).unwrap().level == self.level);
 
-        assert!(cur_level_decs.len() >= 1);
+        assert!(!cur_level_decs.is_empty());
         let mut blamed_decs: HashSet<Literal> = HashSet::from_iter(old_level_decs);
         let mut curset: HashSet<Literal> = HashSet::from_iter(cur_level_decs);
         assert!(
-            curset.len() >= 1,
+            !curset.is_empty(),
             "{}",
-            print_clause_lit_assigs(&conflict_clause, &self.assig)
+            print_clause_lit_assigs(conflict_clause, &self.assig)
         );
         assert!(curset.iter().all(|lit| self.assig.get(&lit.var).unwrap().level == self.level));
         while curset.len() > 1 {
@@ -424,7 +398,7 @@ impl SolverState {
                 d => {
                     print!("Level is {} Curset has: ",self.level);
                     for lit in curset.iter() {
-                        print!(" {} ",print_lit_assig(&lit, &self.assig));
+                        print!(" {} ",print_lit_assig(lit, &self.assig));
                     }
                     println!();
                     unreachable!("Got unexpected {:?} ", d);
@@ -491,7 +465,7 @@ impl SolverState {
             }
 
         }
-        return  true;
+        true
     }
 }
 

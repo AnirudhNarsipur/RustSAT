@@ -41,10 +41,10 @@ pub fn parse_cnf(filename: &str) -> io::Result<ParsedOut> {
         }
     }
     if num_variables == 0 {
-        return Err(io::Error::new(
+        Err(io::Error::new(
             io::ErrorKind::InvalidData,
             "No CNF header found",
-        ));
+        ))
     } else {
         assert!(num_clauses == clause_vec.len());
         Ok(ParsedOut {

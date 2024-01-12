@@ -138,7 +138,7 @@ pub fn print_clause_lit_assigs(clause: &Clause, assig: &Assig) -> String {
     for lit in clause.literals.iter() {
         tmp.push_str(&format!("({:?}:{:?})", lit, assig.get(&lit.var)));
     }
-    return tmp;
+    tmp
 }
 pub fn print_non_falsified_lits(clause: &Clause, assig: &Assig) -> String {
     let mut tmpstr = String::new();
@@ -171,8 +171,8 @@ fn check_all_falsified(clause: &Clause, assig: &Assig) {
         "tmp is {:?} non false: {:?} watch1_assig: {:?} watch2_assig: {:?}",
         tmp,
         print_non_falsified_lits(clause, assig),
-            print_lit_assig(&clause.literals[clause.w1], &assig),
-            print_lit_assig(&clause.literals[clause.w2], &assig) );
+            print_lit_assig(&clause.literals[clause.w1], assig),
+            print_lit_assig(&clause.literals[clause.w2], assig) );
     
 }
 
@@ -240,7 +240,7 @@ impl Clause {
 
     pub fn reset_watch(&mut self, assig: &Assig, cur_idx: usize) -> Option<usize> {
         assert!(cur_idx == self.w1 || cur_idx == self.w2);
-        if !literal_falsified(&self.literals[cur_idx], &assig) {
+        if !literal_falsified(&self.literals[cur_idx], assig) {
             return Some(cur_idx);
         }
         for (idx, lit) in self.literals.iter().enumerate() {
@@ -253,7 +253,7 @@ impl Clause {
                 return Some(idx);
             }
         }
-        return None;
+        None
     }
 
     pub fn set_unassigned_watches(&mut self, assig: &Assig) {
@@ -267,7 +267,7 @@ impl Clause {
         }
         assert!(c == 0);
 
-        check_clause_watch_invariant(&self, assig);
+        check_clause_watch_invariant(self, assig);
     }
 
     pub fn unit_prop(
@@ -290,21 +290,21 @@ impl Clause {
             check_all_falsified(self, assig);
             return ClauseUnitProp::Conflict;
         } else if literal_satisfied(&self.literals[oidx], assig) {
-            check_clause_watch_invariant(&self, assig);
+            check_clause_watch_invariant(self, assig);
             return ClauseUnitProp::Satisfied;
         }
 
         if let Some(nidx) = self.reset_watch(assig, cur_idx) {
             assert!(!literal_falsified(&self.literals[nidx], assig));
-            check_clause_watch_invariant(&self, assig);
+            check_clause_watch_invariant(self, assig);
 
-            return ClauseUnitProp::Reassigned {
+            ClauseUnitProp::Reassigned {
                 old_watch: *lit,
                 new_watch: self.literals[nidx],
-            };
+            }
         } else {
             check_single_unit(self, assig, oidx);
-            check_clause_watch_invariant(&self, assig);
+            check_clause_watch_invariant(self, assig);
 
             ClauseUnitProp::Unit {
                 lit: self.literals[oidx],
@@ -354,7 +354,7 @@ impl WatchList {
             watchlist: Vec::new(),
         }
     }
-    pub fn clear(&mut self) -> () {
+    pub fn clear(&mut self) {
         self.watchlist.iter_mut().for_each(|vlist| {
             vlist.true_watch.clear();
             vlist.false_watch.clear()
