@@ -86,14 +86,15 @@ pub fn literal_unassigned(lit: &Literal, assig: &Assig) -> bool {
     !assig.contains_key(&lit.var)
 }
 
-pub fn check_clause_watch_invariant(clause: &Clause, assig: &Assig) {
+pub fn check_clause_watch_invariant(clause: &Clause, assig: &Assig) -> bool {
     assert!(clause.w1 != clause.w2);
     assert!(
         !(literal_falsified(&clause.literals[clause.w1], assig)
             && literal_falsified(&clause.literals[clause.w2], assig))
     );
+    true
 }
-pub fn check_single_unit(clause: &Clause, assig: &Assig, lit_idx: usize) {
+pub fn check_single_unit(clause: &Clause, assig: &Assig, lit_idx: usize) -> bool {
     assert!(
         lit_idx < clause.literals.len(),
         "idx {} len {}",
@@ -125,6 +126,7 @@ pub fn check_single_unit(clause: &Clause, assig: &Assig, lit_idx: usize) {
         );
     }
     assert!(unassigned_lit[0] == clause.literals[lit_idx]);
+    true
 }
 
 pub fn print_lit_assig(lit: &Literal, assig: &Assig) -> String {
@@ -159,7 +161,7 @@ pub fn print_non_falsified_lits(clause: &Clause, assig: &Assig) -> String {
 }
 
 
-fn check_all_falsified(clause: &Clause, assig: &Assig) {
+fn check_all_falsified(clause: &Clause, assig: &Assig) -> bool{
     let tmp: Vec<Literal> = clause
         .literals
         .iter()
@@ -173,6 +175,7 @@ fn check_all_falsified(clause: &Clause, assig: &Assig) {
         print_non_falsified_lits(clause, assig),
             print_lit_assig(&clause.literals[clause.w1], assig),
             print_lit_assig(&clause.literals[clause.w2], assig) );
+    true
     
 }
 
@@ -265,9 +268,9 @@ impl Clause {
         if self.reset_watch(assig, self.w2).is_none() {
             c += 1;
         }
-        assert!(c == 0);
+        debug_assert!(c == 0);
 
-        check_clause_watch_invariant(self, assig);
+        debug_assert!(check_clause_watch_invariant(self, assig));
     }
 
     pub fn unit_prop(
@@ -275,7 +278,7 @@ impl Clause {
         assig: &Assig,
         lit: &Literal
     ) -> ClauseUnitProp {
-        assert!(literal_falsified(lit, assig));
+        debug_assert!(literal_falsified(lit, assig));
 
         let (cur_idx, oidx) = if self.literals[self.w1] == *lit {
             (self.w1, self.w2)
@@ -287,24 +290,24 @@ impl Clause {
         let other_watch_lit = &self.literals[oidx];
 
         if literal_falsified(other_watch_lit, assig) {
-            check_all_falsified(self, assig);
+            debug_assert!(check_all_falsified(self, assig));
             return ClauseUnitProp::Conflict;
         } else if literal_satisfied(&self.literals[oidx], assig) {
-            check_clause_watch_invariant(self, assig);
+            debug_assert!(check_clause_watch_invariant(self, assig));
             return ClauseUnitProp::Satisfied;
         }
 
         if let Some(nidx) = self.reset_watch(assig, cur_idx) {
-            assert!(!literal_falsified(&self.literals[nidx], assig));
-            check_clause_watch_invariant(self, assig);
+            debug_assert!(!literal_falsified(&self.literals[nidx], assig));
+            debug_assert!(check_clause_watch_invariant(self, assig));
 
             ClauseUnitProp::Reassigned {
                 old_watch: *lit,
                 new_watch: self.literals[nidx],
             }
         } else {
-            check_single_unit(self, assig, oidx);
-            check_clause_watch_invariant(self, assig);
+            debug_assert!(check_single_unit(self, assig, oidx));
+            debug_assert!(check_clause_watch_invariant(self, assig));
 
             ClauseUnitProp::Unit {
                 lit: self.literals[oidx],
