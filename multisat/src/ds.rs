@@ -3,6 +3,8 @@ pub mod utils;
 use std::collections::{HashSet, VecDeque};
 pub use utils::*;
 pub mod heuristic;
+use nohash_hasher::NoHashHasher;
+
 
 use self::heuristic::VSIDS;
 pub enum FormulaPreprocess {
@@ -126,15 +128,18 @@ impl SolverState {
             .add_to_list(&clause.literals[clause.w2], self.clauses.len());
         self.clauses.push(clause);
     }
-    pub fn add_conflict_clause(&mut self, mut clause: Clause, uip: Literal) {
+    pub fn check_clause_lits_unique(&self, clause: &Clause) -> bool {
         let clauseset = clause
             .literals
             .iter()
             .map(|lit| lit.var)
             .collect::<HashSet<LiteralSize>>();
-        assert!(clauseset.len() == clause.literals.len());
-        // let res = print_clause_lit_assigs(&clause, &self.assig);
-        // println!("Cur level: {} {}", self.level, res);
+        debug_assert!(clauseset.len() == clause.literals.len());
+        true
+    }
+    
+    pub fn add_conflict_clause(&mut self, mut clause: Clause, uip: Literal) {
+        debug_assert!(self.check_clause_lits_unique(&clause));
         clause.w1 = clause
             .literals
             .iter()
@@ -146,7 +151,7 @@ impl SolverState {
             .unwrap();
         clause.w2 = clause.literals.iter().position(|&lit| lit == uip).unwrap();
         self.decision_heuristic.add_clause(&clause);
-        assert!(clause.literals[clause.w2] == uip);
+        debug_assert!(clause.literals[clause.w2] == uip);
 
         self.watchlist
             .add_to_list(&clause.literals[clause.w1], self.clauses.len());
