@@ -1,5 +1,4 @@
 use std::{
-    collections::{HashMap, HashSet},
     fmt, vec,
 };
 
@@ -66,25 +65,70 @@ impl AssigInfo {
         Self { litsign, level }
     }
 }
-pub type Assig = HashMap<LiteralSize, AssigInfo>;
+// pub type Assig = HashMap<LiteralSize, AssigInfo>;
 
-#[inline(always)]
-pub fn literal_falsified(lit: &Literal, assig: &Assig) -> bool {
-    match assig.get(&lit.var) {
-        Some(&b) => b.litsign != lit.sign,
-        None => false,
-    }
+#[derive(Debug, PartialEq)]
+pub struct Assig {
+    assn :    Vec<Option<AssigInfo>>,
+    ln : usize
 }
 
-pub fn literal_satisfied(lit: &Literal, assig: &Assig) -> bool {
-    match assig.get(&lit.var) {
-        Some(&b) => b.litsign == lit.sign,
-        None => false,
+impl Assig {
+    pub fn new(num_vars: usize) -> Self {
+        Self { assn : vec![None; num_vars + 1],ln : 0} 
     }
+
+    pub fn get(&self, var: &LiteralSize) -> Option<&AssigInfo> {
+        self.assn[*var].as_ref()
+    }
+
+    pub fn insert(&mut self , var : LiteralSize, assig_info : AssigInfo) {
+        self.assn[var] = Some(assig_info);
+        self.ln += 1
+    }
+
+    pub fn remove(&mut self, var : &LiteralSize) {
+        self.ln -= 1;
+        self.assn[*var] = None
+    }
+
+    pub fn contains_key(&self, var : &LiteralSize) -> bool {
+        self.assn[*var].is_some()
+    }
+    
+    pub fn keys(&self) -> impl Iterator<Item = LiteralSize> + '_ {
+        self.assn.iter().enumerate().filter_map(|(idx, assig)| {
+            if assig.is_some() {
+                Some(idx)
+            } else {
+                None
+            }
+        })
+    }
+
+    pub fn len(&self) -> usize{
+        self.ln
+    }
+
 }
-pub fn literal_unassigned(lit: &Literal, assig: &Assig) -> bool {
-    !assig.contains_key(&lit.var)
-}
+    #[inline(always)]
+    pub fn literal_falsified(lit: &Literal,assig:&Assig) -> bool {
+        match assig.assn[lit.var] {
+            Some(b) => b.litsign != lit.sign,
+            None => false,
+        }
+    }
+
+    pub fn literal_satisfied(lit: &Literal,assig:&Assig) -> bool {
+        match assig.assn[lit.var] {
+            Some(b) => b.litsign == lit.sign,
+            None => false,
+        }
+    }
+    pub fn literal_unassigned( lit: &Literal,assig:&Assig) -> bool {
+        assig.assn[lit.var].is_none()
+    }
+
 
 pub fn check_clause_watch_invariant(clause: &Clause, assig: &Assig) -> bool {
     assert!(clause.w1 != clause.w2);
@@ -155,13 +199,11 @@ pub fn print_non_falsified_lits(clause: &Clause, assig: &Assig) -> String {
         for lit in tmp {
             tmpstr.push_str(&print_lit_assig(&lit, assig));
         }
-       
     }
     tmpstr
 }
 
-
-fn check_all_falsified(clause: &Clause, assig: &Assig) -> bool{
+fn check_all_falsified(clause: &Clause, assig: &Assig) -> bool {
     let tmp: Vec<Literal> = clause
         .literals
         .iter()
@@ -173,10 +215,10 @@ fn check_all_falsified(clause: &Clause, assig: &Assig) -> bool{
         "tmp is {:?} non false: {:?} watch1_assig: {:?} watch2_assig: {:?}",
         tmp,
         print_non_falsified_lits(clause, assig),
-            print_lit_assig(&clause.literals[clause.w1], assig),
-            print_lit_assig(&clause.literals[clause.w2], assig) );
+        print_lit_assig(&clause.literals[clause.w1], assig),
+        print_lit_assig(&clause.literals[clause.w2], assig)
+    );
     true
-    
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -273,11 +315,7 @@ impl Clause {
         debug_assert!(check_clause_watch_invariant(self, assig));
     }
 
-    pub fn unit_prop(
-        &mut self,
-        assig: &Assig,
-        lit: &Literal
-    ) -> ClauseUnitProp {
+    pub fn unit_prop(&mut self, assig: &Assig, lit: &Literal) -> ClauseUnitProp {
         debug_assert!(literal_falsified(lit, assig));
 
         let (cur_idx, oidx) = if self.literals[self.w1] == *lit {
@@ -392,7 +430,6 @@ impl WatchList {
     pub fn remove_watch(&mut self, lit: &Literal, watch_idx: usize) {
         self.watchlist[lit.var].remove_idx(lit.sign, watch_idx);
     }
-    
 }
 
 #[derive(Clone, PartialEq, Debug, Eq)]

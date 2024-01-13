@@ -1,6 +1,6 @@
 pub mod utils;
 
-use std::collections::{HashMap, HashSet, VecDeque};
+use std::collections::{HashSet, VecDeque};
 pub use utils::*;
 pub mod heuristic;
 
@@ -13,7 +13,7 @@ pub enum FormulaPreprocess {
 #[derive(PartialEq, Debug)]
 pub struct SolverState {
     decision_stack: Vec<Decision>,
-    pub assig: HashMap<LiteralSize, AssigInfo>,
+    pub assig: Assig,
     pub level: usize,
     watchlist: WatchList,
     pub num_variables: usize,
@@ -27,7 +27,7 @@ impl SolverState {
 
         Self {
             decision_stack: dstack,
-            assig: HashMap::new(),
+            assig: Assig::new(num_vars),
             level: 0,
             watchlist: WatchList::new(num_vars), //Initialize later
             num_variables: num_vars,
@@ -246,7 +246,7 @@ impl SolverState {
         let unit_vars: HashSet<Literal> = self
             .assig
             .keys()
-            .map(|&var| Literal {
+            .map(|var| Literal {
                 var,
                 sign: self.assig.get(&var).unwrap().litsign,
             })
