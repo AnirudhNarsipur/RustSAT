@@ -1,12 +1,15 @@
 pub mod utils;
 
-use std::collections::{HashSet, VecDeque};
+use std::collections::VecDeque;
+
 pub use utils::*;
 pub mod heuristic;
-use nohash_hasher::NoHashHasher;
+use rustc_hash::FxHashSet;
+
 
 
 use self::heuristic::VSIDS;
+
 pub enum FormulaPreprocess {
     TrivialUNSAT,
     Ok,
@@ -119,7 +122,7 @@ impl SolverState {
             .literals
             .iter()
             .map(|lit| lit.var)
-            .collect::<HashSet<LiteralSize>>();
+            .collect::<FxHashSet<LiteralSize>>();
         assert!(clauseset.len() == clause.literals.len());
         clause.set_unassigned_watches(&self.assig);
         self.watchlist
@@ -133,7 +136,7 @@ impl SolverState {
             .literals
             .iter()
             .map(|lit| lit.var)
-            .collect::<HashSet<LiteralSize>>();
+            .collect::<FxHashSet<LiteralSize>>();
         debug_assert!(clauseset.len() == clause.literals.len());
         true
     }
@@ -161,7 +164,7 @@ impl SolverState {
         self.clauses.push(clause);
     }
     pub fn add_raw_clause(&mut self, mut raw_clause: Vec<Literal>) -> bool {
-        let mut set = HashSet::new();
+        let mut set : FxHashSet<Literal>=  FxHashSet::default();
         raw_clause.retain(|e| set.insert(*e));
 
         if raw_clause.len() == 1 {
@@ -183,7 +186,8 @@ impl SolverState {
         // maintain a seperate set from the assignments because we want the chronology to be correct -
         // all parents lits in the implication graph should precede the given lit without ^ that would break
 
-        let mut seen_new_units: HashSet<Literal> = HashSet::from([blame.get_lit()]);
+        let mut seen_new_units: FxHashSet<Literal> = FxHashSet::default();
+        seen_new_units.insert(blame.get_lit());
         let mut add_unit: bool = false;
         while !units_queue.is_empty() {
             let d = units_queue.pop_front().unwrap();
@@ -248,7 +252,7 @@ impl SolverState {
         assert!(self.decision_stack.is_empty());
         let orig_len = self.clauses.len();
         //Unit prop all the unit clauses and then remove them
-        let unit_vars: HashSet<Literal> = self
+        let unit_vars: FxHashSet<Literal> = self
             .assig
             .keys()
             .map(|var| Literal {
@@ -316,7 +320,7 @@ impl SolverState {
     }
 
     fn check_new_clause(&self, new_clause: &Clause) {
-        let clauseset: HashSet<Literal> = HashSet::from_iter(new_clause.literals.clone());
+        let clauseset: FxHashSet<Literal> = FxHashSet::from_iter(new_clause.literals.clone());
         assert!(clauseset.len() == new_clause.literals.len());
         assert_eq!(
             new_clause
@@ -372,8 +376,8 @@ impl SolverState {
             .partition(|lit| self.assig.get(&lit.var).unwrap().level == self.level);
 
         assert!(!cur_level_decs.is_empty());
-        let mut blamed_decs: HashSet<Literal> = HashSet::from_iter(old_level_decs);
-        let mut curset: HashSet<Literal> = HashSet::from_iter(cur_level_decs);
+        let mut blamed_decs: FxHashSet<Literal> = FxHashSet::from_iter(old_level_decs);
+        let mut curset: FxHashSet<Literal> = FxHashSet::from_iter(cur_level_decs);
         assert!(
             !curset.is_empty(),
             "{}",

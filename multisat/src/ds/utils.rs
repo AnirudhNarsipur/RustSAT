@@ -1,6 +1,4 @@
-use std::{
-    fmt, vec,
-};
+use std::{fmt, vec};
 
 #[derive(Clone, PartialEq, Eq, Hash, Copy)]
 pub struct Literal {
@@ -69,66 +67,69 @@ impl AssigInfo {
 
 #[derive(Debug, PartialEq)]
 pub struct Assig {
-    assn :    Vec<Option<AssigInfo>>,
-    ln : usize
+    assn: Vec<Option<AssigInfo>>,
+    ln: usize,
 }
 
 impl Assig {
     pub fn new(num_vars: usize) -> Self {
-        Self { assn : vec![None; num_vars + 1],ln : 0} 
+        Self {
+            assn: vec![None; num_vars + 1],
+            ln: 0,
+        }
     }
 
     pub fn get(&self, var: &LiteralSize) -> Option<&AssigInfo> {
         self.assn[*var].as_ref()
     }
 
-    pub fn insert(&mut self , var : LiteralSize, assig_info : AssigInfo) {
+    pub fn insert(&mut self, var: LiteralSize, assig_info: AssigInfo) {
         self.assn[var] = Some(assig_info);
         self.ln += 1
     }
 
-    pub fn remove(&mut self, var : &LiteralSize) {
+    pub fn remove(&mut self, var: &LiteralSize) {
         self.ln -= 1;
         self.assn[*var] = None
     }
 
-    pub fn contains_key(&self, var : &LiteralSize) -> bool {
+    pub fn contains_key(&self, var: &LiteralSize) -> bool {
         self.assn[*var].is_some()
     }
-    
+
     pub fn keys(&self) -> impl Iterator<Item = LiteralSize> + '_ {
-        self.assn.iter().enumerate().filter_map(|(idx, assig)| {
-            if assig.is_some() {
-                Some(idx)
-            } else {
-                None
-            }
-        })
+        self.assn.iter().enumerate().filter_map(
+            |(idx, assig)| {
+                if assig.is_some() {
+                    Some(idx)
+                } else {
+                    None
+                }
+            },
+        )
     }
 
-    pub fn len(&self) -> usize{
+    pub fn len(&self) -> usize {
         self.ln
     }
-
 }
-    #[inline(always)]
-    pub fn literal_falsified(lit: &Literal,assig:&Assig) -> bool {
-        match assig.assn[lit.var] {
-            Some(b) => b.litsign != lit.sign,
-            None => false,
-        }
+#[inline(always)]
+pub fn literal_falsified(lit: &Literal, assig: &Assig) -> bool {
+    match assig.assn[lit.var] {
+        Some(b) => b.litsign != lit.sign,
+        None => false,
     }
+}
 
-    pub fn literal_satisfied(lit: &Literal,assig:&Assig) -> bool {
-        match assig.assn[lit.var] {
-            Some(b) => b.litsign == lit.sign,
-            None => false,
-        }
+pub fn literal_satisfied(lit: &Literal, assig: &Assig) -> bool {
+    match assig.assn[lit.var] {
+        Some(b) => b.litsign == lit.sign,
+        None => false,
     }
-    pub fn literal_unassigned( lit: &Literal,assig:&Assig) -> bool {
-        assig.assn[lit.var].is_none()
-    }
-
+}
+pub fn literal_unassigned(lit: &Literal, assig: &Assig) -> bool {
+    assig.assn[lit.var].is_none()
+}
 
 pub fn check_clause_watch_invariant(clause: &Clause, assig: &Assig) -> bool {
     assert!(clause.w1 != clause.w2);
@@ -284,7 +285,7 @@ impl Clause {
     }
 
     pub fn reset_watch(&mut self, assig: &Assig, cur_idx: usize) -> Option<usize> {
-        assert!(cur_idx == self.w1 || cur_idx == self.w2);
+        debug_assert!(cur_idx == self.w1 || cur_idx == self.w2);
         if !literal_falsified(&self.literals[cur_idx], assig) {
             return Some(cur_idx);
         }
@@ -327,12 +328,14 @@ impl Clause {
         };
         let other_watch_lit = &self.literals[oidx];
 
-        if literal_falsified(other_watch_lit, assig) {
-            debug_assert!(check_all_falsified(self, assig));
-            return ClauseUnitProp::Conflict;
-        } else if literal_satisfied(&self.literals[oidx], assig) {
-            debug_assert!(check_clause_watch_invariant(self, assig));
-            return ClauseUnitProp::Satisfied;
+        if let Some(b) = assig.assn[other_watch_lit.var] {
+            if b.litsign == other_watch_lit.sign {
+                debug_assert!(check_clause_watch_invariant(self, assig));
+                return ClauseUnitProp::Satisfied;
+            } else {
+                debug_assert!(check_all_falsified(self, assig));
+                return ClauseUnitProp::Conflict;
+            }
         }
 
         if let Some(nidx) = self.reset_watch(assig, cur_idx) {
