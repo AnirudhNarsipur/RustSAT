@@ -320,8 +320,8 @@ pub type LiteralSize = usize;
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct VarWatch {
-    pub false_watch: HashSet<usize>,
-    pub true_watch: HashSet<usize>,
+    false_watch: Vec<usize>,
+    true_watch: Vec<usize>,
 }
 impl Default for VarWatch {
     fn default() -> Self {
@@ -332,19 +332,21 @@ impl Default for VarWatch {
 impl VarWatch {
     pub fn new() -> Self {
         Self {
-            false_watch: HashSet::new(),
-            true_watch: HashSet::new(),
+            false_watch: Vec::new(),
+            true_watch: Vec::new(),
         }
     }
-    pub fn remove_idx(&mut self, lit: &Literal, idx: usize) {
-        assert!(self.has(idx));
-        match lit.sign {
-            true => self.true_watch.remove(&idx),
-            false => self.false_watch.remove(&idx),
+    pub fn remove_idx(&mut self, lit: bool, watch_idx: usize) {
+        match lit {
+            true => self.true_watch.swap_remove(watch_idx),
+            false => self.false_watch.swap_remove(watch_idx),
         };
     }
-    pub fn has(&self, idx: usize) -> bool {
-        self.false_watch.contains(&idx) || self.true_watch.contains(&idx)
+    pub fn add_clause(&mut self, lit: bool, clause_idx: usize) {
+        match lit {
+            true => self.true_watch.push(clause_idx),
+            false => self.false_watch.push(clause_idx),
+        };
     }
 }
 #[derive(PartialEq, Debug)]
@@ -370,9 +372,9 @@ impl WatchList {
     }
     pub fn add_to_list(&mut self, lit: &Literal, clause_idx: usize) {
         if lit.sign {
-            self.watchlist[lit.var].true_watch.insert(clause_idx);
+            self.watchlist[lit.var].true_watch.push(clause_idx);
         } else {
-            self.watchlist[lit.var].false_watch.insert(clause_idx);
+            self.watchlist[lit.var].false_watch.push(clause_idx);
         }
     }
 
@@ -380,18 +382,17 @@ impl WatchList {
     pub fn get(&self, idx: usize) -> &VarWatch {
         &self.watchlist[idx]
     }
-    pub fn get_lit(&self, lit: &Literal) -> &HashSet<usize> {
+    pub fn get_lit(&self, lit: &Literal) -> &Vec<usize> {
         match lit.sign {
             true => &self.watchlist[lit.var].true_watch,
             false => &self.watchlist[lit.var].false_watch,
         }
     }
-    pub fn move_watch(&mut self, old_watch: Literal, new_watch: Literal, clause_idx: usize) {
-        assert!(self.watchlist[old_watch.var].has(clause_idx));
-        self.watchlist[old_watch.var].remove_idx(&old_watch, clause_idx);
-        self.add_to_list(&new_watch, clause_idx);
-        assert!(self.watchlist[new_watch.var].has(clause_idx));
+
+    pub fn remove_watch(&mut self, lit: &Literal, watch_idx: usize) {
+        self.watchlist[lit.var].remove_idx(lit.sign, watch_idx);
     }
+    
 }
 
 #[derive(Clone, PartialEq, Debug, Eq)]

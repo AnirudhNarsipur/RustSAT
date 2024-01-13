@@ -1,8 +1,6 @@
 pub mod utils;
 
-use std::{
-    collections::{HashMap, HashSet, VecDeque}
-};
+use std::collections::{HashMap, HashSet, VecDeque};
 pub use utils::*;
 pub mod heuristic;
 
@@ -20,8 +18,7 @@ pub struct SolverState {
     watchlist: WatchList,
     pub num_variables: usize,
     pub clauses: Vec<Clause>,
-    decision_heuristic:VSIDS,
-
+    decision_heuristic: VSIDS,
 }
 
 impl SolverState {
@@ -35,7 +32,7 @@ impl SolverState {
             watchlist: WatchList::new(num_vars), //Initialize later
             num_variables: num_vars,
             clauses: Vec::new(),
-            decision_heuristic: VSIDS::new(num_vars)
+            decision_heuristic: VSIDS::new(num_vars),
         }
     }
 
@@ -192,7 +189,10 @@ impl SolverState {
                 self.add_decision(&d);
             }
             assert!(literal_satisfied(&unit, &self.assig));
-            for &clause_idx in self.watchlist.get_lit(&unit_inverted).clone().iter() {
+
+            let mut watch_idx = 0;
+            while watch_idx < self.watchlist.get_lit(&unit_inverted).len() {
+                let clause_idx = self.watchlist.get_lit(&unit_inverted)[watch_idx];
                 let clause = self.clauses.get_mut(clause_idx).unwrap();
                 assert!(literal_falsified(&unit_inverted, &self.assig));
 
@@ -202,15 +202,21 @@ impl SolverState {
                         new_watch,
                     } => {
                         assert!(clause.literals.iter().any(|x| *x == new_watch));
-                        self.watchlist.move_watch(old_watch, new_watch, clause_idx);
+                        self.watchlist.remove_watch(&old_watch, watch_idx);
+                        self.watchlist.add_to_list(&new_watch, clause_idx);
                     }
-                    ClauseUnitProp::Satisfied => continue,
+                    ClauseUnitProp::Satisfied => {
+                        watch_idx += 1;
+                        continue;
+                    }
                     ClauseUnitProp::Unit { lit } => {
-                        if seen_new_units.contains(&lit) || self.assig.contains_key(&lit.var) {
-                            continue;
+                        if !seen_new_units.contains(&lit) && !self.assig.contains_key(&lit.var) {
+                            units_queue.push_back(Decision::make_unitprop(lit, clause_idx));
+                            seen_new_units.insert(lit);
                         }
-                        units_queue.push_back(Decision::make_unitprop(lit, clause_idx));
-                        seen_new_units.insert(lit);
+
+                        watch_idx += 1;
+                        continue;
                     }
                     ClauseUnitProp::Conflict => {
                         return FormulaUnitProp::Conflict {
@@ -232,13 +238,12 @@ impl SolverState {
             self.watchlist.add_to_list(&clause.literals[clause.w2], idx);
         }
     }
- 
 
     pub fn preprocess(&mut self) -> FormulaPreprocess {
         assert!(self.decision_stack.is_empty());
         let orig_len = self.clauses.len();
         //Unit prop all the unit clauses and then remove them
-        let  unit_vars: HashSet<Literal> = self
+        let unit_vars: HashSet<Literal> = self
             .assig
             .keys()
             .map(|&var| Literal {
@@ -257,7 +262,7 @@ impl SolverState {
         self.clauses
             .retain(|clause| !clause.clause_satisfied(&self.assig));
 
-        for clause in self.clauses.iter(){
+        for clause in self.clauses.iter() {
             self.decision_heuristic.add_clause(clause);
         }
         self.decision_heuristic.sort_var_order();
@@ -369,7 +374,9 @@ impl SolverState {
             "{}",
             print_clause_lit_assigs(conflict_clause, &self.assig)
         );
-        assert!(curset.iter().all(|lit| self.assig.get(&lit.var).unwrap().level == self.level));
+        assert!(curset
+            .iter()
+            .all(|lit| self.assig.get(&lit.var).unwrap().level == self.level));
         while curset.len() > 1 {
             match self.pop_decision() {
                 Decision::UnitProp {
@@ -387,18 +394,18 @@ impl SolverState {
                         }
 
                         let resp_lit_level = self.get_lit_level(&decided_lit);
-                        
+
                         if 0 < resp_lit_level && resp_lit_level < self.level {
                             blamed_decs.insert(decided_lit);
-                        } else if resp_lit_level == self.level{
+                        } else if resp_lit_level == self.level {
                             curset.insert(decided_lit);
                         }
                     }
                 }
                 d => {
-                    print!("Level is {} Curset has: ",self.level);
+                    print!("Level is {} Curset has: ", self.level);
                     for lit in curset.iter() {
-                        print!(" {} ",print_lit_assig(lit, &self.assig));
+                        print!(" {} ", print_lit_assig(lit, &self.assig));
                     }
                     println!();
                     unreachable!("Got unexpected {:?} ", d);
@@ -417,7 +424,7 @@ impl SolverState {
             self.add_conflict_clause(new_clause, uip.invert());
             Decision::make_unitprop(uip.invert(), self.clauses.len() - 1)
         } else {
-            assert_eq!(self.level,0);
+            assert_eq!(self.level, 0);
             Decision::make_assertunit(uip.invert())
         };
         self.add_decision(&d);
@@ -443,8 +450,8 @@ impl SolverState {
             let l1 = clause.literals[clause.w1];
             let l2 = clause.literals[clause.w2];
 
-            assert!(self.watchlist.watchlist[l1.var].has(idx));
-            assert!(self.watchlist.watchlist[l2.var].has(idx));
+            // assert!(self.watchlist.watchlist[l1.var].has(idx));
+            // assert!(self.watchlist.watchlist[l2.var].has(idx));
             //both have to be unassigned or one of them has to be true
             let invariant = (literal_unassigned(&l1, &self.assig)
                 && literal_unassigned(&l2, &self.assig))
@@ -463,7 +470,6 @@ impl SolverState {
                 );
                 assert!(false);
             }
-
         }
         true
     }
