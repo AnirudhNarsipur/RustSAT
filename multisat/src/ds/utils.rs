@@ -85,7 +85,7 @@ impl Assig {
 
     pub fn insert(&mut self, var: LiteralSize, assig_info: AssigInfo) {
         self.assn[var] = Some(assig_info);
-        self.ln += 1
+        self.ln += 1;
     }
 
     pub fn remove(&mut self, var: &LiteralSize) {
@@ -316,17 +316,17 @@ impl Clause {
         debug_assert!(check_clause_watch_invariant(self, assig));
     }
 
+    // #[inline(always)]
     pub fn unit_prop(&mut self, assig: &Assig, lit: &Literal) -> ClauseUnitProp {
         debug_assert!(literal_falsified(lit, assig));
 
-        let (cur_idx, oidx) = if self.literals[self.w1] == *lit {
-            (self.w1, self.w2)
-        } else if self.literals[self.w2] == *lit {
-            (self.w2, self.w1)
-        } else {
-            unreachable!();
+        let (cur_idx, oidx) = match *lit {
+            _ if self.literals[self.w1] == *lit => (self.w1, self.w2),
+            _ if self.literals[self.w2] == *lit => (self.w2, self.w1),
+            _ => unreachable!(),
         };
-        let other_watch_lit = &self.literals[oidx];
+        
+        let other_watch_lit = self.literals[oidx];
 
         if let Some(b) = assig.assn[other_watch_lit.var] {
             if b.litsign == other_watch_lit.sign {

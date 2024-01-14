@@ -1,12 +1,10 @@
 pub mod utils;
 
-use std::collections::VecDeque;
+use std::{collections::VecDeque, vec};
 
 pub use utils::*;
 pub mod heuristic;
-use rustc_hash::FxHashSet;
-
-
+use rustc_hash::{FxHashMap, FxHashSet};
 
 use self::heuristic::VSIDS;
 
@@ -15,7 +13,25 @@ pub enum FormulaPreprocess {
     Ok,
 }
 
-#[derive(PartialEq, Debug)]
+#[derive(Debug)]
+struct UnitPropDS {
+    dq: VecDeque<Decision>,
+    seen: FxHashSet<Literal>,
+}
+impl UnitPropDS {
+    fn new(num_vars: usize) -> Self {
+        Self {
+            dq: VecDeque::with_capacity(num_vars),
+            seen: FxHashSet::with_capacity_and_hasher(num_vars, Default::default()),
+        }
+    }
+    fn clear(&mut self) {
+        self.dq.clear();
+        self.seen.clear();
+    }
+}
+
+#[derive(Debug)]
 pub struct SolverState {
     decision_stack: Vec<Decision>,
     pub assig: Assig,
@@ -24,6 +40,7 @@ pub struct SolverState {
     pub num_variables: usize,
     pub clauses: Vec<Clause>,
     decision_heuristic: VSIDS,
+    unit_prop_ds: UnitPropDS,
 }
 
 impl SolverState {
@@ -38,6 +55,7 @@ impl SolverState {
             num_variables: num_vars,
             clauses: Vec::new(),
             decision_heuristic: VSIDS::new(num_vars),
+            unit_prop_ds: UnitPropDS::new(num_vars),
         }
     }
 
@@ -140,7 +158,7 @@ impl SolverState {
         debug_assert!(clauseset.len() == clause.literals.len());
         true
     }
-    
+
     pub fn add_conflict_clause(&mut self, mut clause: Clause, uip: Literal) {
         debug_assert!(self.check_clause_lits_unique(&clause));
         clause.w1 = clause
@@ -164,7 +182,7 @@ impl SolverState {
         self.clauses.push(clause);
     }
     pub fn add_raw_clause(&mut self, mut raw_clause: Vec<Literal>) -> bool {
-        let mut set : FxHashSet<Literal>=  FxHashSet::default();
+        let mut set: FxHashSet<Literal> = FxHashSet::default();
         raw_clause.retain(|e| set.insert(*e));
 
         if raw_clause.len() == 1 {
@@ -182,15 +200,17 @@ impl SolverState {
     }
 
     pub fn unit_prop(&mut self, blame: &Decision) -> FormulaUnitProp {
-        let mut units_queue = VecDeque::from([blame.clone()]);
+        self.unit_prop_ds.clear();
+
+        self.unit_prop_ds.dq.push_back(blame.clone());
+
         // maintain a seperate set from the assignments because we want the chronology to be correct -
         // all parents lits in the implication graph should precede the given lit without ^ that would break
+        self.unit_prop_ds.seen.insert(blame.get_lit());
 
-        let mut seen_new_units: FxHashSet<Literal> = FxHashSet::default();
-        seen_new_units.insert(blame.get_lit());
         let mut add_unit: bool = false;
-        while !units_queue.is_empty() {
-            let d = units_queue.pop_front().unwrap();
+        while !self.unit_prop_ds.dq.is_empty() {
+            let d = self.unit_prop_ds.dq.pop_front().unwrap();
             let unit = d.get_lit();
             let unit_inverted = unit.invert();
 
@@ -219,9 +239,13 @@ impl SolverState {
                         continue;
                     }
                     ClauseUnitProp::Unit { lit } => {
-                        if !seen_new_units.contains(&lit) && !self.assig.contains_key(&lit.var) {
-                            units_queue.push_back(Decision::make_unitprop(lit, clause_idx));
-                            seen_new_units.insert(lit);
+                        if !self.unit_prop_ds.seen.contains(&lit)
+                            && !self.assig.contains_key(&lit.var)
+                        {
+                            self.unit_prop_ds
+                                .dq
+                                .push_back(Decision::make_unitprop(lit, clause_idx));
+                            self.unit_prop_ds.seen.insert(lit);
                         }
 
                         watch_idx += 1;
@@ -247,6 +271,49 @@ impl SolverState {
             self.watchlist.add_to_list(&clause.literals[clause.w2], idx);
         }
     }
+    fn pure_literal_elimination(&mut self) {
+        let mut pure_var_tracker: Vec<[bool; 2]> = vec![[false, false]; self.num_variables + 1];
+
+        for lit in self.assig.keys() {
+            if self.assig.get(&lit).unwrap().litsign {
+                pure_var_tracker[lit][1] = true;
+            } else {
+                pure_var_tracker[lit][0] = true;
+            }
+        }
+        //Get all the pure lits
+        for clause in self.clauses.iter() {
+            for lit in clause.literals.iter() {
+                if lit.is_negative() {
+                    pure_var_tracker[lit.var][0] = true;
+                } else {
+                    pure_var_tracker[lit.var][1] = true;
+                }
+            }
+        }
+        //Filter them
+        let pure_vars: Vec<LiteralSize> = pure_var_tracker
+            .iter()
+            .enumerate()
+            .filter(|(var, &arr)| arr[0] ^ arr[1])
+            .filter(|(var, &arr)| self.assig.get(var).is_none())
+            .map(|(var, &_arr)| var)
+            .collect();
+
+        //assign them
+        for &pure_var in pure_vars.iter() {
+            let sign = pure_var_tracker[pure_var][1];
+            let lit = Literal {
+                var: pure_var,
+                sign,
+            };
+            self.add_decision(&Decision::AssertUnit { lit: lit });
+        }
+        println!("Assigned {} pure vars", pure_vars.len());
+        //Remove clause containg pure vars
+        self.clauses
+            .retain(|clause| !clause.clause_satisfied(&self.assig));
+    }
 
     pub fn preprocess(&mut self) -> FormulaPreprocess {
         assert!(self.decision_stack.is_empty());
@@ -270,7 +337,7 @@ impl SolverState {
         }
         self.clauses
             .retain(|clause| !clause.clause_satisfied(&self.assig));
-
+        self.pure_literal_elimination();
         for clause in self.clauses.iter() {
             self.decision_heuristic.add_clause(clause);
         }
@@ -446,6 +513,7 @@ impl SolverState {
     pub fn get_model(&self) -> Vec<i32> {
         let mut v: Vec<i32> = Vec::with_capacity(self.num_variables);
         for var in 1..=self.num_variables {
+            println!("Getting for var {}", var);
             let assigninfo = self.assig.get(&var).unwrap();
             v.push(var as i32 * if assigninfo.litsign { 1 } else { -1 });
         }
