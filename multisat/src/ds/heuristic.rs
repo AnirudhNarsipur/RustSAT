@@ -1,5 +1,9 @@
 use std::{cmp::Ordering, collections:: HashMap};
 
+use rand::seq::SliceRandom;
+use rand::thread_rng;
+
+
 use crate::ds::utils::*;
 #[derive(PartialEq,Eq,Clone,Debug,PartialOrd, Ord)]
 struct Phase {
@@ -106,6 +110,12 @@ impl VSIDS {
             }
         }
         unreachable!("No unassigned variables left");
+    }
+    pub  fn randomize(&mut self) {
+
+        let mut rng = thread_rng();
+
+        self.var_order.shuffle(&mut rng);
     }
 
     pub fn add_clause(&mut self, clause : &Clause) {
