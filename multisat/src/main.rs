@@ -46,7 +46,7 @@ fn solver(solver_state: &mut SolverState) -> CNFStatus {
     while solver_state.assigments_len() < solver_state.num_variables {
         // println!("Num clauses is {}", solver_state.clauses.len());
         debug_assert!(solver_state.check_watch_invariant());
-        solver_state.delete_and_restart();
+        solver_state.restart_search();
         let recent_dec: Decision = Decision::make_choice(solver_state.pick_var());
         solver_state.add_decision(&recent_dec);
         if !unit_prop_sat(solver_state, &recent_dec) {

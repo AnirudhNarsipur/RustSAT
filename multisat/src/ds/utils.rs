@@ -56,7 +56,7 @@ impl Literal {
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Copy)]
 pub struct AssigInfo {
     pub litsign: bool,
-    pub level: usize,
+    pub level: usize
 }
 impl AssigInfo {
     pub fn new(litsign: bool, level: usize) -> Self {
@@ -228,7 +228,8 @@ pub struct Clause {
     pub w1: usize,
     pub w2: usize,
     pub deleted : bool,
-    pub conflict : bool
+    pub conflict : bool,
+    pub activity : usize
 }
 
 #[derive(Debug)]
@@ -262,7 +263,8 @@ impl TryFrom<Vec<Literal>> for Clause {
             w1: 0,
             w2: 1,
             deleted : false,
-            conflict : false
+            conflict : false,
+            activity : 0
         })
     }
 }
@@ -281,7 +283,8 @@ impl Clause {
             w1: 0,
             w2: 1,
             deleted:false,
-            conflict:false
+            conflict:false,
+            activity:0
         }
     }
     pub fn clause_satisfied(&self, assig: &Assig) -> bool {

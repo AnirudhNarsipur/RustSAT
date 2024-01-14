@@ -41,11 +41,13 @@ pub struct SolverState {
     pub clauses: Vec<Clause>,
     decision_heuristic: VSIDS,
     unit_prop_ds: UnitPropDS,
-    clauses_since_deletion : usize
+    clauses_since_deletion : f32,
+    max_num_conflict_restart : f32,
+    cur_num_conflict_restart : f32,
+    
 }
 
 impl SolverState {
-    const NUMCONFLICTS_PER_DELETION: usize = 2560;
     fn make_new(num_vars: usize) -> Self {
         let dstack: Vec<Decision> = Vec::with_capacity(num_vars);
 
@@ -58,7 +60,9 @@ impl SolverState {
             clauses: Vec::new(),
             decision_heuristic: VSIDS::new(num_vars),
             unit_prop_ds: UnitPropDS::new(num_vars),
-            clauses_since_deletion : 0
+            clauses_since_deletion : 0.0,
+            cur_num_conflict_restart : 8.0,
+            max_num_conflict_restart : 1024.0
         }
     }
 
@@ -173,7 +177,7 @@ impl SolverState {
 
     pub fn add_conflict_clause(&mut self, mut clause: Clause, uip: Literal) {
         debug_assert!(self.check_clause_lits_unique(&clause));
-        self.clauses_since_deletion += 1;
+        self.clauses_since_deletion += 1.0;
         clause.w1 = clause
             .literals
             .iter()
@@ -441,7 +445,8 @@ impl SolverState {
             w1: 0,
             w2: uip_idx,
             deleted:false,
-            conflict:true
+            conflict:true,
+            activity:0
         };
         debug_assert!(self.check_new_clause(&new_clause));
         new_clause
@@ -530,6 +535,8 @@ impl SolverState {
             Decision::make_unitprop(uip.invert(), self.clauses.len() - 1)
         } else {
             assert_eq!(self.level, 0);
+            self.clauses.retain(|clause| !clause.deleted && (!clause.conflict || clause.activity > 0 || clause.literals.len() < 3 ));
+            self.reset_watch_keepcurrentwatch();
             Decision::make_assertunit(uip.invert())
         };
         self.add_decision(&d);
@@ -537,14 +544,18 @@ impl SolverState {
     }
 
     
-    pub fn delete_and_restart(&mut self) {
-        if self.clauses_since_deletion > Self::NUMCONFLICTS_PER_DELETION  {
+    pub fn restart_search(&mut self) {
+        if self.clauses_since_deletion > self.cur_num_conflict_restart   {
             self.backtrack_to_level(0);
             // println!("Calling delete");
-            self.clauses_since_deletion = 0;
-            self.clauses.retain(|clause| !clause.deleted );
-            self.reset_watch_keepcurrentwatch();
+            self.clauses_since_deletion = 0.0;
+            if self.cur_num_conflict_restart >= self.max_num_conflict_restart {
+
+            self.max_num_conflict_restart *= 1.2;
             debug_assert!(self.check_watch_invariant());
+
+            }
+            self.cur_num_conflict_restart *= 2.0;
         }
 
     }
