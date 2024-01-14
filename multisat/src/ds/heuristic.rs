@@ -111,6 +111,7 @@ impl VSIDS {
     pub fn add_clause(&mut self, clause : &Clause) {
         self.nclause_counter += 1;
         if self.nclause_counter == self.decay_rate {
+            // println!("Decaying");
             self.nclause_counter = 0;
             self.decay();
             self.sort_var_order();

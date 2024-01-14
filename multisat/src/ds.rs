@@ -41,9 +41,11 @@ pub struct SolverState {
     pub clauses: Vec<Clause>,
     decision_heuristic: VSIDS,
     unit_prop_ds: UnitPropDS,
+    clauses_since_deletion : usize
 }
 
 impl SolverState {
+    const NUMCONFLICTS_PER_DELETION: usize = 2560;
     fn make_new(num_vars: usize) -> Self {
         let dstack: Vec<Decision> = Vec::with_capacity(num_vars);
 
@@ -56,6 +58,7 @@ impl SolverState {
             clauses: Vec::new(),
             decision_heuristic: VSIDS::new(num_vars),
             unit_prop_ds: UnitPropDS::new(num_vars),
+            clauses_since_deletion : 0
         }
     }
 
@@ -170,6 +173,7 @@ impl SolverState {
 
     pub fn add_conflict_clause(&mut self, mut clause: Clause, uip: Literal) {
         debug_assert!(self.check_clause_lits_unique(&clause));
+        self.clauses_since_deletion += 1;
         clause.w1 = clause
             .literals
             .iter()
@@ -277,6 +281,13 @@ impl SolverState {
         self.watchlist.clear();
         for (idx, clause) in self.clauses.iter_mut().enumerate() {
             clause.set_unassigned_watches(&self.assig);
+            self.watchlist.add_to_list(&clause.literals[clause.w1], idx);
+            self.watchlist.add_to_list(&clause.literals[clause.w2], idx);
+        }
+    }
+    pub fn reset_watch_keepcurrentwatch(&mut self) {
+        self.watchlist.clear();
+        for (idx, clause) in self.clauses.iter_mut().enumerate() {
             self.watchlist.add_to_list(&clause.literals[clause.w1], idx);
             self.watchlist.add_to_list(&clause.literals[clause.w2], idx);
         }
@@ -400,7 +411,7 @@ impl SolverState {
         second_highest.unwrap_or(0)
     }
 
-    fn check_new_clause(&self, new_clause: &Clause) {
+    fn check_new_clause(&self, new_clause: &Clause) -> bool {
         let clauseset: FxHashSet<Literal> = FxHashSet::from_iter(new_clause.literals.clone());
         assert!(clauseset.len() == new_clause.literals.len());
         assert_eq!(
@@ -420,6 +431,7 @@ impl SolverState {
                 .count(),
             1
         );
+        true
     }
 
     fn create_conflict_clause(&self, clause_lits: Vec<Literal>) -> Clause {
@@ -428,9 +440,10 @@ impl SolverState {
             literals: clause_lits,
             w1: 0,
             w2: uip_idx,
-            deleted:false
+            deleted:false,
+            conflict:true
         };
-        self.check_new_clause(&new_clause);
+        debug_assert!(self.check_new_clause(&new_clause));
         new_clause
     }
     fn check_conflict_clause(&self, conflict_clause: &Clause) {
@@ -522,6 +535,20 @@ impl SolverState {
         self.add_decision(&d);
         ConflictAnalysisResult::Backtrack { decision: d }
     }
+
+    
+    pub fn delete_and_restart(&mut self) {
+        if self.clauses_since_deletion > Self::NUMCONFLICTS_PER_DELETION  {
+            self.backtrack_to_level(0);
+            // println!("Calling delete");
+            self.clauses_since_deletion = 0;
+            self.clauses.retain(|clause| !clause.deleted );
+            self.reset_watch_keepcurrentwatch();
+            debug_assert!(self.check_watch_invariant());
+        }
+
+    }
+
     pub fn assigments_len(&self) -> usize {
         self.assig.len()
     }

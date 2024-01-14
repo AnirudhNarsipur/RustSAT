@@ -44,7 +44,9 @@ fn solver(solver_state: &mut SolverState) -> CNFStatus {
         solver_state.assigments_len()
     );
     while solver_state.assigments_len() < solver_state.num_variables {
+        // println!("Num clauses is {}", solver_state.clauses.len());
         debug_assert!(solver_state.check_watch_invariant());
+        solver_state.delete_and_restart();
         let recent_dec: Decision = Decision::make_choice(solver_state.pick_var());
         solver_state.add_decision(&recent_dec);
         if !unit_prop_sat(solver_state, &recent_dec) {
@@ -172,7 +174,7 @@ fn run_solver(formula_file : String) -> (f32, CNFStatus){
 }
 fn main() {
     //get current time
-    // println!("Size of clause struct is {}", std::mem::size_of::<Clause>());
+    println!("Size of option struct is {}", std::mem::size_of::<Option<AssigInfo>>());
     let args: Vec<String> = env::args().collect();
     let formula_file = args[1].clone();
     // let formula_file = "../input/C168_128.cnf".to_string();

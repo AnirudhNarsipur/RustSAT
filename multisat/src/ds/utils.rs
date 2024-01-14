@@ -228,6 +228,7 @@ pub struct Clause {
     pub w1: usize,
     pub w2: usize,
     pub deleted : bool,
+    pub conflict : bool
 }
 
 #[derive(Debug)]
@@ -261,6 +262,7 @@ impl TryFrom<Vec<Literal>> for Clause {
             w1: 0,
             w2: 1,
             deleted : false,
+            conflict : false
         })
     }
 }
@@ -278,7 +280,8 @@ impl Clause {
             literals: lits,
             w1: 0,
             w2: 1,
-            deleted:false
+            deleted:false,
+            conflict:false
         }
     }
     pub fn clause_satisfied(&self, assig: &Assig) -> bool {
