@@ -56,7 +56,7 @@ impl Literal {
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Copy)]
 pub struct AssigInfo {
     pub litsign: bool,
-    pub level: usize
+    pub level: usize,
 }
 impl AssigInfo {
     pub fn new(litsign: bool, level: usize) -> Self {
@@ -227,9 +227,9 @@ pub struct Clause {
     pub literals: Vec<Literal>,
     pub w1: usize,
     pub w2: usize,
-    pub deleted : bool,
-    pub conflict : bool,
-    pub activity : usize
+    pub deleted: bool,
+    pub conflict: bool,
+    pub activity: usize,
 }
 
 #[derive(Debug)]
@@ -262,9 +262,9 @@ impl TryFrom<Vec<Literal>> for Clause {
             literals: lits,
             w1: 0,
             w2: 1,
-            deleted : false,
-            conflict : false,
-            activity : 0
+            deleted: false,
+            conflict: false,
+            activity: 0,
         })
     }
 }
@@ -282,9 +282,9 @@ impl Clause {
             literals: lits,
             w1: 0,
             w2: 1,
-            deleted:false,
-            conflict:false,
-            activity:0
+            deleted: false,
+            conflict: false,
+            activity: 0,
         }
     }
     pub fn clause_satisfied(&self, assig: &Assig) -> bool {
@@ -329,12 +329,12 @@ impl Clause {
     pub fn unit_prop(&mut self, assig: &Assig, lit: &Literal) -> ClauseUnitProp {
         debug_assert!(literal_falsified(lit, assig));
 
-        let (cur_idx, oidx) = match *lit {
-            _ if self.literals[self.w1] == *lit => (self.w1, self.w2),
-            _ if self.literals[self.w2] == *lit => (self.w2, self.w1),
-            _ => unreachable!(),
+        let (cur_idx, oidx) = if self.literals[self.w1] == *lit {
+            (self.w1, self.w2)
+        } else {
+            debug_assert!(self.literals[self.w2] == *lit);
+            (self.w2, self.w1)
         };
-        
         let other_watch_lit = self.literals[oidx];
 
         if let Some(b) = assig.assn[other_watch_lit.var] {
@@ -360,7 +360,7 @@ impl Clause {
             debug_assert!(check_clause_watch_invariant(self, assig));
 
             ClauseUnitProp::Unit {
-                lit: self.literals[oidx],
+                lit: other_watch_lit,
             }
         }
     }

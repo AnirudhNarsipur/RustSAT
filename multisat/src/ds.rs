@@ -234,7 +234,7 @@ impl SolverState {
             if add_unit {
                 self.add_decision(&d);
             }
-            assert!(literal_satisfied(&unit, &self.assig));
+            debug_assert!(literal_satisfied(&unit, &self.assig));
 
             let mut watch_idx = 0;
             while watch_idx < self.watchlist.get_lit(&unit_inverted).len() {
