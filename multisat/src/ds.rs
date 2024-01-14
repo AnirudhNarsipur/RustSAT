@@ -4,7 +4,7 @@ use std::{collections::VecDeque, vec};
 
 pub use utils::*;
 pub mod heuristic;
-use rustc_hash::{FxHashMap, FxHashSet};
+use rustc_hash::FxHashSet;
 
 use self::heuristic::VSIDS;
 
@@ -74,12 +74,21 @@ impl SolverState {
     pub fn pick_var(&mut self) -> Literal {
         self.decision_heuristic.pick_var(&self.assig)
     }
+
+    pub fn delete_satisified_clauses(&mut self, lit: &Literal) {
+        self.clauses.iter_mut().for_each(|clause| {
+            if clause.literals.contains(lit) {
+                clause.deleted = true;
+            }
+        });
+    }
     pub fn add_decision(&mut self, d: &Decision) {
         assert!(!literal_falsified(&d.get_lit(), &self.assig));
 
         match d {
             Decision::AssertUnit { lit } => {
                 // println!("Adding decision {:?} lvl: {}", d, 0);
+                self.delete_satisified_clauses(lit);
                 self.assig.insert(lit.var, AssigInfo::new(lit.sign, 0));
             }
             Decision::Choice { lit } => {
@@ -225,6 +234,7 @@ impl SolverState {
                 let clause = self.clauses.get_mut(clause_idx).unwrap();
                 assert!(literal_falsified(&unit_inverted, &self.assig));
 
+
                 match clause.unit_prop(&self.assig, &unit_inverted) {
                     ClauseUnitProp::Reassigned {
                         old_watch,
@@ -271,6 +281,10 @@ impl SolverState {
             self.watchlist.add_to_list(&clause.literals[clause.w2], idx);
         }
     }
+    fn remove_marked_clauses(&mut self) {
+        self.clauses.retain(|clause| !clause.deleted);
+        self.reset_watchlist();
+    }
     fn pure_literal_elimination(&mut self) {
         let mut pure_var_tracker: Vec<[bool; 2]> = vec![[false, false]; self.num_variables + 1];
 
@@ -295,8 +309,8 @@ impl SolverState {
         let pure_vars: Vec<LiteralSize> = pure_var_tracker
             .iter()
             .enumerate()
-            .filter(|(var, &arr)| arr[0] ^ arr[1])
-            .filter(|(var, &arr)| self.assig.get(var).is_none())
+            .filter(|(_var, &arr)| arr[0] ^ arr[1])
+            .filter(|(var, &_arr)| self.assig.get(var).is_none())
             .map(|(var, &_arr)| var)
             .collect();
 
@@ -310,9 +324,7 @@ impl SolverState {
             self.add_decision(&Decision::AssertUnit { lit: lit });
         }
         println!("Assigned {} pure vars", pure_vars.len());
-        //Remove clause containg pure vars
-        self.clauses
-            .retain(|clause| !clause.clause_satisfied(&self.assig));
+
     }
 
     pub fn preprocess(&mut self) -> FormulaPreprocess {
@@ -338,11 +350,13 @@ impl SolverState {
         self.clauses
             .retain(|clause| !clause.clause_satisfied(&self.assig));
         self.pure_literal_elimination();
+        self.remove_marked_clauses();
+        self.reset_watchlist();
         for clause in self.clauses.iter() {
             self.decision_heuristic.add_clause(clause);
         }
         self.decision_heuristic.sort_var_order();
-        self.reset_watchlist();
+      
         self.check_watch_invariant();
 
         println!(
@@ -414,6 +428,7 @@ impl SolverState {
             literals: clause_lits,
             w1: 0,
             w2: uip_idx,
+            deleted:false
         };
         self.check_new_clause(&new_clause);
         new_clause
@@ -495,6 +510,7 @@ impl SolverState {
         let clause_lits: Vec<Literal> = blamed_decs.into_iter().map(|lit| lit.invert()).collect();
         let backtrack_level = self.get_backtrack_level(&clause_lits);
         self.backtrack_to_level(backtrack_level);
+        // println!("clause len size is {}", clause_lits.len());
         let d = if clause_lits.len() != 1 {
             let new_clause = self.create_conflict_clause(clause_lits);
             self.add_conflict_clause(new_clause, uip.invert());

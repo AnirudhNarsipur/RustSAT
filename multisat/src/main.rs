@@ -38,21 +38,14 @@ fn unit_prop_sat(solver_state: &mut SolverState, recent_dec: &Decision) -> bool 
 
 fn solver(solver_state: &mut SolverState) -> CNFStatus {
     println!(
-        "Have {} vars {} clauses",
+        "Have {} vars {} clauses Assigned {} vars in preprocessing",
         solver_state.num_variables,
-        solver_state.clauses.len()
+        solver_state.clauses.len(),
+        solver_state.assigments_len()
     );
     while solver_state.assigments_len() < solver_state.num_variables {
         debug_assert!(solver_state.check_watch_invariant());
         let recent_dec: Decision = Decision::make_choice(solver_state.pick_var());
-
-        // println!("Have {} assigs", solver_state.assig.len());
-
-        // println!(
-        //     "solver loop level {} num clauses: {}",
-        //     solver_state.level,
-        //     solver_state.clauses.len()
-        // );
         solver_state.add_decision(&recent_dec);
         if !unit_prop_sat(solver_state, &recent_dec) {
             return CNFStatus::UNSAT;
