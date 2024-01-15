@@ -229,7 +229,7 @@ pub struct Clause {
     pub w2: usize,
     pub deleted: bool,
     pub conflict: bool,
-    pub activity: usize,
+    pub lbd: usize,
 }
 
 #[derive(Debug)]
@@ -264,7 +264,7 @@ impl TryFrom<Vec<Literal>> for Clause {
             w2: 1,
             deleted: false,
             conflict: false,
-            activity: 0,
+            lbd: 0,
         })
     }
 }
@@ -284,7 +284,7 @@ impl Clause {
             w2: 1,
             deleted: false,
             conflict: false,
-            activity: 0,
+            lbd: 0,
         }
     }
     pub fn clause_satisfied(&self, assig: &Assig) -> bool {
@@ -345,7 +345,7 @@ impl Clause {
     // #[inline(always)]
     pub fn unit_prop(&mut self, assig: &Assig, lit: &Literal) -> ClauseUnitProp {
         debug_assert!(literal_falsified(lit, assig));
-        let curlit = false as usize;
+       
         let (cur_idx, oidx) = if self.literals[self.w1] == *lit {
             (self.w1, self.w2)
         } else {

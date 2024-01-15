@@ -41,10 +41,10 @@ pub struct SolverState {
     pub clauses: Vec<Clause>,
     decision_heuristic: VSIDS,
     unit_prop_ds: UnitPropDS,
-    clauses_since_deletion : f32,
-    max_num_conflict_restart : f32,
-    cur_num_conflict_restart : f32,
-    
+    clauses_since_deletion: f32,
+    min_num_conflict_restart: f32,
+    max_num_conflict_restart: f32,
+    cur_num_conflict_restart: f32,
 }
 
 impl SolverState {
@@ -60,9 +60,10 @@ impl SolverState {
             clauses: Vec::new(),
             decision_heuristic: VSIDS::new(num_vars),
             unit_prop_ds: UnitPropDS::new(num_vars),
-            clauses_since_deletion : 0.0,
-            cur_num_conflict_restart : 8.0,
-            max_num_conflict_restart : 1024.0
+            clauses_since_deletion: 0.0,
+            cur_num_conflict_restart: 16.0,
+            max_num_conflict_restart: 1024.0,
+            min_num_conflict_restart: 16.0,
         }
     }
 
@@ -177,7 +178,9 @@ impl SolverState {
 
     pub fn add_conflict_clause(&mut self, mut clause: Clause, uip: Literal) {
         debug_assert!(self.check_clause_lits_unique(&clause));
+
         self.clauses_since_deletion += 1.0;
+
         clause.w1 = clause
             .literals
             .iter()
@@ -241,7 +244,6 @@ impl SolverState {
                 let clause_idx = self.watchlist.get_lit(&unit_inverted)[watch_idx];
                 let clause = &mut self.clauses[clause_idx];
                 debug_assert!(literal_falsified(&unit_inverted, &self.assig));
-
 
                 match clause.unit_prop(&self.assig, &unit_inverted) {
                     ClauseUnitProp::Reassigned {
@@ -339,7 +341,6 @@ impl SolverState {
             self.add_decision(&Decision::AssertUnit { lit: lit });
         }
         println!("Assigned {} pure vars", pure_vars.len());
-
     }
 
     pub fn preprocess(&mut self) -> FormulaPreprocess {
@@ -371,7 +372,7 @@ impl SolverState {
             self.decision_heuristic.add_clause(clause);
         }
         self.decision_heuristic.sort_var_order();
-      
+
         self.check_watch_invariant();
 
         println!(
@@ -438,15 +439,15 @@ impl SolverState {
         true
     }
 
-    fn create_conflict_clause(&self, clause_lits: Vec<Literal>) -> Clause {
+    fn create_conflict_clause(&self, clause_lits: Vec<Literal>, lbd: usize) -> Clause {
         let uip_idx = clause_lits.len() - 1;
         let new_clause = Clause {
             literals: clause_lits,
             w1: 0,
             w2: uip_idx,
-            deleted:false,
-            conflict:true,
-            activity:0
+            deleted: false,
+            conflict: true,
+            lbd: lbd,
         };
         debug_assert!(self.check_new_clause(&new_clause));
         new_clause
@@ -466,23 +467,18 @@ impl SolverState {
 
         self.check_conflict_clause(conflict_clause);
 
-        let blamed_decisions = conflict_clause
-            .literals
-            .iter()
-            .map(|lit| lit.invert());
+        let blamed_decisions = conflict_clause.literals.iter().map(|lit| lit.invert());
 
-        let (cur_level_decs, old_level_decs): (Vec<Literal>, Vec<Literal>) = blamed_decisions
-            .partition(|lit| self.assig.get(&lit.var).unwrap().level == self.level);
+        let (mut curset, mut blamed_decs): (FxHashSet<Literal>, FxHashSet<Literal>) =
+            blamed_decisions.partition(|lit| self.assig.get(&lit.var).unwrap().level == self.level);
 
-       debug_assert!(!cur_level_decs.is_empty());
-        let mut blamed_decs: FxHashSet<Literal> = FxHashSet::from_iter(old_level_decs);
-        let mut curset: FxHashSet<Literal> = FxHashSet::from_iter(cur_level_decs);
-        assert!(
+        debug_assert!(!curset.is_empty());
+        debug_assert!(
             !curset.is_empty(),
             "{}",
             print_clause_lit_assigs(conflict_clause, &self.assig)
         );
-        assert!(curset
+        debug_assert!(curset
             .iter()
             .all(|lit| self.assig.get(&lit.var).unwrap().level == self.level));
         while curset.len() > 1 {
@@ -525,38 +521,49 @@ impl SolverState {
         blamed_decs.insert(uip);
 
         let clause_lits: Vec<Literal> = blamed_decs.into_iter().map(|lit| lit.invert()).collect();
+
+        //calculate lbd
+        let mut leveltrack: FxHashSet<usize> = FxHashSet::default();
+        for lit in clause_lits.iter() {
+            leveltrack.insert(self.get_lit_level(lit));
+        }
+        let lbd = leveltrack.len();
+
         let backtrack_level = self.get_backtrack_level(&clause_lits);
         self.backtrack_to_level(backtrack_level);
         // println!("clause len size is {}", clause_lits.len());
         let d = if clause_lits.len() != 1 {
-            let new_clause = self.create_conflict_clause(clause_lits);
+            let new_clause = self.create_conflict_clause(clause_lits, lbd);
             self.add_conflict_clause(new_clause, uip.invert());
             Decision::make_unitprop(uip.invert(), self.clauses.len() - 1)
         } else {
             assert_eq!(self.level, 0);
-            self.clauses.retain(|clause| !clause.deleted && (!clause.conflict || clause.activity > 0 || clause.literals.len() < 3 ));
+            self.clauses
+                .retain(|clause| !clause.deleted && (!clause.conflict || clause.lbd <= 5));
             self.reset_watch_keepcurrentwatch();
+            // println!("Old {} new {} clauses", curln, self.clauses.len());
             Decision::make_assertunit(uip.invert())
         };
         self.add_decision(&d);
         ConflictAnalysisResult::Backtrack { decision: d }
     }
 
-    
     pub fn restart_search(&mut self) {
-        if self.clauses_since_deletion > self.cur_num_conflict_restart   {
+        if self.clauses_since_deletion > self.cur_num_conflict_restart {
             self.backtrack_to_level(0);
-            // println!("Calling delete");
             self.clauses_since_deletion = 0.0;
-            if self.cur_num_conflict_restart >= self.max_num_conflict_restart {
-
-            self.max_num_conflict_restart *= 1.2;
-            debug_assert!(self.check_watch_invariant());
-
+            if self.cur_num_conflict_restart <= self.max_num_conflict_restart {
+                self.cur_num_conflict_restart *= 2.0;
+            } else {
+                self.max_num_conflict_restart *= 1.2;
+                self.min_num_conflict_restart *= 1.2;
+                self.cur_num_conflict_restart = self.min_num_conflict_restart;
+                self.clauses.retain(|clause| clause.lbd <= 7);
+                self.reset_watch_keepcurrentwatch();
+                // println!("retained {} of {} clauses", self.clauses.len(), oldln);
+                debug_assert!(self.check_watch_invariant());
             }
-            self.cur_num_conflict_restart *= 2.0;
         }
-
     }
 
     pub fn assigments_len(&self) -> usize {
