@@ -106,8 +106,7 @@ pub fn print_result(formula_file: String, res: CNFStatus, time: f32) {
 pub fn check_result(solver_state: &SolverState, res: &CNFStatus) {
     println!("Checking result");
 
-    match res {
-        CNFStatus::SAT { model } => {
+    if let CNFStatus::SAT { model }  = res {
             //Check that assignment equal to model
             for &n in model.iter() {
                 let lit = Literal::from(n);
@@ -139,9 +138,8 @@ pub fn check_result(solver_state: &SolverState, res: &CNFStatus) {
                     assert!(false);
                 }
             }
-            println!("ALL GOOD");
-        }
-        _ => {}
+            println!("c SAT ALL GOOD");
+       
     }
 }
 
@@ -170,7 +168,7 @@ fn run_solver(formula_file : String) -> (f32, CNFStatus){
     check_result(&solver_state, &res);
     let mut total = start.elapsed().as_secs_f32();
     total = (total * 100.0).round() / 100.0;
-    return (total,res);
+     (total,res)
 }
 fn main() {
     // //get current time

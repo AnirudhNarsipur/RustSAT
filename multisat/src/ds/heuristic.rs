@@ -3,7 +3,7 @@ use rustc_hash::FxHashMap;
 
 
 use crate::ds::utils::*;
-#[derive(PartialEq,Eq,Clone,Debug,PartialOrd, Ord)]
+#[derive(PartialEq,Eq,Clone,Debug,PartialOrd, Ord,Default)]
 struct Phase {
     true_score : usize,
     false_score : usize,
@@ -21,12 +21,8 @@ impl Phase {
         self.false_score -= 1;
     }
 }
-impl Default for Phase {
-    fn default() -> Self {
-        Phase{true_score : 0,false_score : 0}
-    }
-}
-#[derive(PartialEq,Eq,Clone,Debug,PartialOrd)]
+
+#[derive(PartialEq,Eq,Clone,Debug)]
 struct ScoreVar {
     phase : Phase,
     var : LiteralSize,
@@ -50,6 +46,11 @@ fn literal_from_score_var(var : &mut ScoreVar) -> Literal {
     }
 }
 
+impl PartialOrd for ScoreVar {
+    fn partial_cmp(&self, other: &ScoreVar) -> Option<Ordering> {
+        Some(self.cmp(other))
+    }
+}
 impl Ord for ScoreVar {
     fn cmp(&self, other: &ScoreVar) -> Ordering {
         self.phase.cmp(&other.phase)
@@ -123,7 +124,7 @@ impl VSIDS {
         }
         for lit in clause.literals.iter() {
             let var = self.variable_scores.get_mut(&lit.var).unwrap();
-            var.bump(&lit, self.add_bump);
+            var.bump(lit, self.add_bump);
 
         }
     }
