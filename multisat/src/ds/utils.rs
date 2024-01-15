@@ -67,7 +67,7 @@ impl AssigInfo {
 
 #[derive(Debug, PartialEq)]
 pub struct Assig {
-    assn: Vec<Option<AssigInfo>>,
+    pub assn: Vec<Option<AssigInfo>>,
     ln: usize,
 }
 
@@ -310,6 +310,23 @@ impl Clause {
         }
         None
     }
+   
+   
+    pub fn reset_watch_nocheck(&mut self, assig: &Assig, cur_idx: usize) -> Option<usize> {
+        debug_assert!(cur_idx == self.w1 || cur_idx == self.w2);
+        debug_assert!(literal_falsified(&self.literals[cur_idx], assig));
+        for (idx, lit) in self.literals.iter().enumerate() {
+            if idx != self.w1 && idx != self.w2 && !literal_falsified(lit, assig) {
+                if cur_idx == self.w1 {
+                    self.w1 = idx;
+                } else {
+                    self.w2 = idx;
+                }
+                return Some(idx);
+            }
+        }
+        None
+    }
 
     pub fn set_unassigned_watches(&mut self, assig: &Assig) {
         let mut c = 0;
@@ -328,7 +345,7 @@ impl Clause {
     // #[inline(always)]
     pub fn unit_prop(&mut self, assig: &Assig, lit: &Literal) -> ClauseUnitProp {
         debug_assert!(literal_falsified(lit, assig));
-
+        let curlit = false as usize;
         let (cur_idx, oidx) = if self.literals[self.w1] == *lit {
             (self.w1, self.w2)
         } else {
@@ -347,7 +364,7 @@ impl Clause {
             }
         }
 
-        if let Some(nidx) = self.reset_watch(assig, cur_idx) {
+        if let Some(nidx) = self.reset_watch_nocheck(assig, cur_idx) {
             debug_assert!(!literal_falsified(&self.literals[nidx], assig));
             debug_assert!(check_clause_watch_invariant(self, assig));
 

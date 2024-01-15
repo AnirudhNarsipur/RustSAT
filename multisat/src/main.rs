@@ -173,7 +173,8 @@ fn run_solver(formula_file : String) -> (f32, CNFStatus){
     return (total,res);
 }
 fn main() {
-    //get current time
+    // //get current time
+    // println!("Size of option struct is {}", std::mem::size_of::<Option<AssigInfo>>());
     let args: Vec<String> = env::args().collect();
     let formula_file = args[1].clone();
     // let formula_file = "../input/C168_128.cnf".to_string();

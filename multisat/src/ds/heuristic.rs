@@ -1,4 +1,6 @@
-use std::{cmp::Ordering, collections:: HashMap};
+use std::cmp::Ordering;
+use rustc_hash::FxHashMap;
+
 
 use crate::ds::utils::*;
 #[derive(PartialEq,Eq,Clone,Debug,PartialOrd, Ord)]
@@ -56,7 +58,7 @@ impl Ord for ScoreVar {
 
 #[derive(PartialEq,Debug)]
 pub struct VSIDS {
-    variable_scores : HashMap<LiteralSize,Phase>,
+    variable_scores : FxHashMap<LiteralSize,Phase>,
     var_order : Vec<ScoreVar>,
     nclause_counter : usize,
     decay_rate : usize,
@@ -82,7 +84,8 @@ impl VSIDS {
 
     pub fn new(num_vars : usize) -> Self {
         let mut var_ord  : Vec<ScoreVar> = Vec::with_capacity(num_vars);
-        let mut var_scores: HashMap<LiteralSize,Phase> = HashMap::with_capacity(num_vars);
+        
+        let mut var_scores: FxHashMap<LiteralSize,Phase> = FxHashMap::with_capacity_and_hasher(num_vars, Default::default());
 
         for v in 1..=num_vars {
            

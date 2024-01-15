@@ -239,8 +239,8 @@ impl SolverState {
             let mut watch_idx = 0;
             while watch_idx < self.watchlist.get_lit(&unit_inverted).len() {
                 let clause_idx = self.watchlist.get_lit(&unit_inverted)[watch_idx];
-                let clause = self.clauses.get_mut(clause_idx).unwrap();
-                assert!(literal_falsified(&unit_inverted, &self.assig));
+                let clause = &mut self.clauses[clause_idx];
+                debug_assert!(literal_falsified(&unit_inverted, &self.assig));
 
 
                 match clause.unit_prop(&self.assig, &unit_inverted) {
@@ -248,7 +248,7 @@ impl SolverState {
                         old_watch,
                         new_watch,
                     } => {
-                        assert!(clause.literals.iter().any(|x| *x == new_watch));
+                        debug_assert!(clause.literals.iter().any(|x| *x == new_watch));
                         self.watchlist.remove_watch(&old_watch, watch_idx);
                         self.watchlist.add_to_list(&new_watch, clause_idx);
                     }
@@ -466,16 +466,15 @@ impl SolverState {
 
         self.check_conflict_clause(conflict_clause);
 
-        let blamed_decisions: Vec<Literal> = conflict_clause
+        let blamed_decisions = conflict_clause
             .literals
             .iter()
-            .map(|lit| lit.invert())
-            .collect();
+            .map(|lit| lit.invert());
+
         let (cur_level_decs, old_level_decs): (Vec<Literal>, Vec<Literal>) = blamed_decisions
-            .into_iter()
             .partition(|lit| self.assig.get(&lit.var).unwrap().level == self.level);
 
-        assert!(!cur_level_decs.is_empty());
+       debug_assert!(!cur_level_decs.is_empty());
         let mut blamed_decs: FxHashSet<Literal> = FxHashSet::from_iter(old_level_decs);
         let mut curset: FxHashSet<Literal> = FxHashSet::from_iter(cur_level_decs);
         assert!(
@@ -567,7 +566,6 @@ impl SolverState {
     pub fn get_model(&self) -> Vec<i32> {
         let mut v: Vec<i32> = Vec::with_capacity(self.num_variables);
         for var in 1..=self.num_variables {
-            println!("Getting for var {}", var);
             let assigninfo = self.assig.get(&var).unwrap();
             v.push(var as i32 * if assigninfo.litsign { 1 } else { -1 });
         }
