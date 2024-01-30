@@ -8,10 +8,11 @@ I decided to finally learn Rust and decided to write a SAT solver as a first pro
 - Conflict Driven Clause Learning (CDCL) + non chronological backtracking
 - 2 watched literals
 - VSIDS heuristic
+- clause deletion
+- random restarts
 
 I plan to eventually: 
  - add proof generation support
- - clause deletion
  - Fix any lingering bugs + broken test suite
  - Improve efficiency
 
