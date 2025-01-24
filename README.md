@@ -1,6 +1,6 @@
 This repo contains two branches:
 
-- julia: A DPLL SAT solver in Julia I wrote as a part of a grad CS course (CSCI2951O Prescriptive Analytics) at Brown Univeristy.
+- julia: A DPLL SAT solver in Julia I wrote as a part of a grad CS course at Brown Univeristy.
 - main
 
 I decided to finally learn Rust and decided to write a SAT solver as a first project. Highlights are:
